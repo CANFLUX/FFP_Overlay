@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Add a polygon to a map using a GeoJSON source</title>
+<meta name="viewport" content="initial-scale=1,maximum-scale=1,user-scalable=no">
+<link href="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v2.15.0/mapbox-gl.js"></script>
+<!-- Import Turf Module - Needed to calculate bounding boxes -->
+<script src='https://api.mapbox.com/mapbox.js/plugins/turf/v2.0.2/turf.min.js'></script>
+<style>
+	body { margin: 0; padding: 0;}
+	#map { position: absolute; top: 0; bottom: 0; width: 100%;}
+	#map canvas {cursor: crosshair;}
+  
+    .action_menu {
+        text-align: center;
+        background: #fff;
+        position: absolute;
+        z-index: 1;
+        bottom: 2%;
+        right: 10px;
+        border: #3887be;
+        border-radius: 3px;
+        display: flex;
+        max-height: 10%;
+        min-width: 75px;
+        max-width: 100%;
+        border: 1px solid rgba(0, 0, 0, 0.4);
+        font-family: 'Open Sans', sans-serif; 
+        }
+
+    .btn {
+        font: bold 12px/20px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+        background-color: #3386c0;
+        color: #fff;
+        position: relative;
+        z-index: 1;
+        border-width: 1px;
+        display: block;
+        cursor: pointer;
+        padding: 8px;
+        border-color: black;
+        width: 100%;
+        /* min-width: 5%; */
+    }
+    .btn:hover {
+        background-color: #4ea0da;
+    }
+    .btn:first-child{
+        margin-left: 0;
+    }    
+    
+    .mapboxgl-popup {
+        padding: 1%;
+        max-width: 50%;
+        min-width: 15%;
+        font-size:2em;
+        line-height:1.25em;
+        }
+
+    #layer_menu {
+        background: #fff;
+        position: absolute;
+        z-index: 1;
+        top: 10px;
+        left: 10px;
+        border-radius: 3px;
+        width: 5%;
+        min-width: 75px;
+        border: 1px solid rgba(0, 0, 0, 0.4);
+        font-family: 'Open Sans', sans-serif;
+        }
+              
+    nav a {
+        font-size: 13px;
+        color: #404040;
+        display: block;
+        margin: 0;
+        padding: 0;
+        padding: 8px;
+        text-decoration: none;
+        border-bottom: 1px solid rgba(0, 0, 0, 0.25);
+        text-align: center;
+        }
+        
+    nav a:last-child {
+        border: none;
+        }
+        
+    nav a:hover {
+        background-color: #f8f8f8;
+        color: #404040;
+        }
+        
+    nav a.active {
+        background-color: #3887be;
+        color: #ffffff;
+        }
+        
+    nav a.active:hover {
+        background: #3074a4;
+        }
+</style>
+</head>
+
+<body>
+<nav id="layer_menu"></nav>
+<div id="map"></div>
+<div class="action_menu"> 
+    <button id="readme" class="btn">View Github</button>
+</div>
+
+<button id="zoomto" class="btn-control">Zoom to Footprint</button>
+<!-- <div id="map"></div> -->
+<script>
+
+    const FFP_Contour_Intervals = [];
+
+	// Replace access token!
+    mapboxgl.accessToken = 'pk.eyJ1IjoidWJjbWljcm9tZXQiLCJhIjoiY2xmMnJzYzlnMGFsYTNxcW1kYWhubjBiaSJ9.rhIOVatxQoS4M__qIFv6Pg';
+  
+    //  Custom mapStyle lest us use ESRI raster tiles
+    const mapStyle = {
+        version: 8,
+        sources: {
+        worldImagery: {
+            type: "raster",
+            tiles: ["https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"],
+            tileSize: 256
+            }
+        },
+        layers: [{
+            id: "worldImagery",
+            type: "raster",
+            source: "worldImagery",
+            minzoom: 0,
+            maxzoom: 22
+            }
+        ]
+    };
+
+    //  Create the map - zoom and center are "arbitrary"
+    const map = new mapboxgl.Map({
+                container: 'map',
+                zoom: 10,
+                center: Tower_Coords, // starting position
+                style: mapStyle,
+                });
+
+    //  Locate the user
+    var geolocate = new mapboxgl.GeolocateControl({
+        positionOptions: {
+        enableHighAccuracy: true
+        },
+        trackUserLocation: true,
+        showUserHeading: true},);
+
+    map.addControl(geolocate);
+    map.addControl(new mapboxgl.NavigationControl());  
+
+    var FFP_Contour_Levels = FFP_json
+    
+    var EC_Station = SITE_json
+
+    map.on('load', () => {
+        // Add a data sources containing GeoJSON data.
+
+        // Add a data source containing GeoJSON data.
+        map.addSource('Site_Name', {
+            'type': 'geojson',
+            'data': EC_Station
+        });
+
+
+        // Source_Template_Start
+        map.addSource('FFP_Contour_Levels', {
+            'type': 'geojson',
+            'data': FFP_Contour_Levels
+        });
+        // Source_Template_End
+
+        // Style_Template_Start
+        map.addLayer({
+            'id': 'FFP_Contour_Levels',
+            'type': 'fill',
+            'source': 'FFP_Contour_Levels',
+            'layout': {
+                'visibility':'none'
+            },
+            'paint': {
+                'fill-color': '#f76605',
+                'fill-opacity': 0.15
+                }
+            });
+        // Add a black outline around the polygon.
+        map.addLayer({
+            'id': 'FFP_Contour_Levels_outline',
+            'type': 'line',
+            'source': 'FFP_Contour_Levels',
+            'layout': {
+                'visibility':'none'
+            },
+            'paint': {
+                'line-color': '#000',
+                'line-width': 3
+                }
+            });
+        // Style_Template_End
+
+        
+        map.addLayer({'id': 'Site_Name',
+                'type': 'circle',
+                'source': 'Site_Name',
+                'filter': ['==', '$type', 'Point'],
+                'layout': {
+                // Make the layer visible by default.
+                'visibility': 'visible'
+                },
+                'paint': {
+                    'circle-radius': 10,
+                    'circle-color': '#9803fc',
+                    "circle-stroke-width": 1,
+                    "circle-stroke-color": 'black'
+                    },
+                });
+
+    });
+
+    map.on('click', 'Climatology_Contour_Levels', (e) => {
+        new mapboxgl.Popup()
+            .setLngLat(e.lngLat)
+            .setHTML(e.features[0].properties.info)
+            .addTo(map);
+        });
+
+        
+    let bbox = turf.extent(EC_Station);
+    
+    // fit zom to the bounding box of whichever layers are loaded
+    function fit() {
+        map.fitBounds(bbox, {maxZoom: 17});
+        };
+
+    fit();
+
+    map.addControl(new mapboxgl.ScaleControl({position: 'bottom-right'}));
+    
+    // Call fit when clicking the zoomto button
+    document.getElementById('zoomto').addEventListener('click', () => {
+        fit()
+    });
+</script>
+
+</body>
+</html>
