@@ -1,5 +1,5 @@
 # Wrapper for the Klujn et al. 2015 flux footprint model
-
+import re
 import os
 import utm_zone
 import numpy as np
@@ -7,10 +7,12 @@ import pandas as pd
 import configparser
 import geopandas as gpd
 from functools import partial
-import matplotlib.pyplot as plt
+# import matplotlib.pyplot as plt
 from multiprocessing import Pool
 from Klujn_2015_Model import FFP
-from shapely.geometry import Polygon
+# from shapely.geometry import Polygon
+from collections import defaultdict
+
 
 import rasterio
 from rasterio import features
@@ -54,9 +56,9 @@ class RunClimatology():
         # Define grid parameters for model
         # Domain is the upwind_fetch (m) in all directions
         # Will create a grid centered on [0 0 zm]
-        self.domain = int(self.ini['FFP_Parameters']['upwind_fetch'])
+        self.domain = int(self.ini['FFP_Parameters']['domain'])
         # dx Cell size of domain [m], Small dx results in higher spatial resolution and higher computing time
-        self.dx = int(self.ini['FFP_Parameters']['resolution'])
+        self.dx = int(self.ini['FFP_Parameters']['dx'])
         # Percentage of source area for which to provide contours, must be between 10% and 90%        
         self.rs = [float(rs) for rs in self.ini['FFP_Parameters']['rs'].split(',')]
 
@@ -78,66 +80,13 @@ class RunClimatology():
         # initialize rasters for footprint climatology
         self.fclim_2d_empty = np.zeros(self.x_2d.shape)
 
-
         # basemap is an optional input, requires a 'path to vector layer' pluss a 'classification' key
         self.rasterizeBasemap(self.ini[self.Site_code]['basemap'],self.ini[self.Site_code]['basemap_class'])
 
-        # ==================================
-        # Define input keys
-
+        self.FFP_Climatology = {}
         self.read_Met()
-        
-    def read_Met(self):
-
-        self.vars = self.ini['Input_Variable_Names']
-
-        self.vars_metadata = self.ini['Input_Variable_Definitions']
-        
-        if self.ini['FFP_Parameters']['verbose'] == "True":
-            print('Requires the following inputs, expecting them to be named as specified:\n')
-            for key,value in self.vars.items():
-                print(self.vars_metadata[key])
-                print(f'Labelled as "{value}" in input self.dataset\n')
-
-        self.Data = pd.read_csv(self.ini['Input_Files']['dpath'],
-                 parse_dates=[self.ini['Input_Files']['timestamp']],
-                 )
-
-        # # Exclude timesteps with *No* Data
-        # self.Data.dropna(how='all')
-
-        if self.vars['canopy_height'] not in self.Data:
-            self.Data['canopy_height']=self.Site_UTM['canopy_height'][0]
-        else:
-            self.Data[self.vars['canopy_height']] = self.Data[self.vars['canopy_height']].fillna(self.Site_UTM['canopy_height'][0])
-        if self.vars['z0'] != '':
-            self.Data['z0'] = self.Data[self.vars['z0']].copy()
-        if self.ini['Assumptions']['roughness_length'] != 'None':
-            self.Data['z0'] = self.Data[self.vars['canopy_height']]*float(self.ini['Assumptions']['roughness_length'])
-        elif self.ini['Assumptions']['roughness_length'] == 'None':
-            self.Data['z0'] = None
-        self.Data['zm-d'] = self.z-(self.Data[self.vars['canopy_height']]*float(self.ini['Assumptions']['displacement_height']))
-        self.Data['zm/ol'] = self.Data['zm-d']/self.Data[self.vars['ol']]
-
-        if self.Subsets is not None:
-            self.Data['Subset']=self.Data[self.Subsets]
-            self.Data['Subset'] = self.Data['Subset'].fillna('N/A')
-        else:
-           self.Data['Subset'] = 'Climatology'
-            
-        self.Data[self.Fc_Names] = np.nan
-        self.Subset_Climatology = {}
-        for self.sub_name in self.Data['Subset'].unique():
-            if self.sub_name != 'N/A':
-                print(self.sub_name)
-                self.run(sub_data=self.Data.loc[self.Data['Subset']==self.sub_name])
-                for c in self.Fc_Names:
-                    self.Data[c] = self.Data[c].fillna(self.sub_data[c])
-
-                # Reverse the ordering of the array so that north is up
-                self.Subset_Climatology[self.sub_name] = self.fclim_2d[::-1]
-        
-        self.summarizeClimatology()
+        if self.FFP_Climatology != {}:
+            self.summarizeClimatology()
 
     def rasterizeBasemap(self,basemap,basemap_class):
         x,y = self.Site_UTM.geometry.x[0],self.Site_UTM.geometry.y[0]
@@ -162,7 +111,7 @@ class RunClimatology():
 
             shapes = ((geom,value) for geom,value in zip(self.baseVector['geometry'],self.baseVector.index))
 
-            with rasterio.open(f"{self.ini['Output']['raster_output']}/Footprint_Basemap_{self.dx}m.tif",'w+',driver='GTiff',width = self.nx, height = self.nx,#+1,
+            with rasterio.open(f"{self.ini['Output']['dpath']}/Footprint_Basemap_{self.dx}m.tif",'w+',driver='GTiff',width = self.nx, height = self.nx,#+1,
                             count = 1,dtype=np.float32,transform = self.Transform,crs = ({'init': f'EPSG:{self.EPSG}'})) as out:
                 out_arr = out.read(1)
                 self.baseRaster = features.rasterize(shapes=shapes,fill = 100,out = out_arr,transform = self.Transform,default_value=-1)
@@ -174,49 +123,51 @@ class RunClimatology():
             self.Fc_Names = []
             self.baseRasterKey = {f'Contribution within {self.domain} m':''}
         
-    def run(self,sub_data):         
-        self.sub_data = sub_data.copy()
-        self.fclim_2d = self.fclim_2d_empty.copy()
+        
+    def read_Met(self):
 
-        self.Filter()
-        print(f"Processing: {self.sub_data.loc[self.sub_data['process']==1].shape[0]} out of {self.sub_data.shape[0]} input records")
-        self.sub_data = self.sub_data.loc[self.sub_data['process'] == 1]
+        self.vars = self.ini['Input_Variable_Names']
 
-        if (__name__ == 'FFP_Asssment' or __name__ == '__main__') and int(self.ini['Multi_Processing']['processes'])>1:
-            
-            batchsize=int(np.ceil(self.sub_data.shape[0]))
-            if batchsize > int(self.ini['Multi_Processing']['batchSize']):
-                batchsize = int(self.ini['Multi_Processing']['batchSize'])
+        self.Data = pd.read_csv(self.ini['Input_Files']['dpath'],dtype=np.object_)
+        
+        # Set FFP inputs to floats
+        for key,val in self.vars.items():
+            if val in self.Data.columns:
+                self.Data[val]=self.Data[val].astype(np.float_)
 
-            ix = 0
-            while self.sub_data[ix:ix+batchsize].shape[0]>0:
-                batch = self.sub_data[ix:ix+batchsize].copy()
-                print(f'Processing Batch {ix}:{ix+batchsize}')
-                umean = batch[self.vars['umean']]
-                ustar = batch[self.vars['ustar']]
-                sigmav = batch[self.vars['sigmav']]
-                h = batch[self.vars['h']]
-                ol = batch[self.vars['ol']]
-                wind_dir = batch[self.vars['wind_dir']]
-                z0 = batch['z0']
-                zm = batch['zm-d']
-                index = batch.index
-                ix += batchsize
-                
-                with Pool(processes=int(self.ini['Multi_Processing']['processes'])) as pool:
-                    for out in pool.starmap(partial(FFP,theta=self.theta,rho=self.rho,x_2d=self.x_2d,basemap=self.baseRaster),
-                                        zip(index,umean,ustar,sigmav,h,ol,wind_dir,z0,zm)):
-                        self.processOutputs(out)
-                    pool.close()
-
+        if self.vars['canopy_height'] not in self.Data:
+            self.Data['canopy_height']=self.Site_UTM['canopy_height'][0]
         else:
-            for i,row in self.sub_data.iterrows():
-                print((i,row[self.vars['ustar']],row[self.vars['sigmav']],row[self.vars['h']],
-                    row[self.vars['ol']],row[self.vars['wind_dir']],row['z0'],row['zm-d']))
-                out = FFP(i,row[self.vars['umean']],row[self.vars['ustar']],row[self.vars['sigmav']],row[self.vars['h']],
-                    row[self.vars['ol']],row[self.vars['wind_dir']],row['z0'],row['zm-d'],
-                    self.theta,self.rho,self.x_2d,basemap=self.baseRaster)
-                self.processOutputs(out)
+            self.Data[self.vars['canopy_height']] = self.Data[self.vars['canopy_height']].fillna(self.Site_UTM['canopy_height'][0])
+        if self.vars['z0'] != '':
+            self.Data['z0'] = self.Data[self.vars['z0']].copy()
+        if self.ini['Assumptions']['roughness_length'] != 'None':
+            self.Data['z0'] = self.Data[self.vars['canopy_height']]*float(self.ini['Assumptions']['roughness_length'])
+        elif self.ini['Assumptions']['roughness_length'] == 'None':
+            self.Data['z0'] = None
+        self.Data['zm-d'] = self.z-(self.Data[self.vars['canopy_height']]*float(self.ini['Assumptions']['displacement_height']))
+        self.Data['zm/ol'] = self.Data['zm-d']/self.Data[self.vars['ol']]
+
+        if self.Subsets is not None:
+            self.Data['Subset']=self.Data[self.Subsets]
+            self.Data['Subset'] = self.Data['Subset'].fillna('N/A')
+        else:
+           self.Data['Subset'] = 'Climatology'
+            
+        self.Data[self.Fc_Names] = np.nan
+        for self.n_sub,self.sub_name in enumerate(self.Data['Subset'].unique()):
+            if self.sub_name != 'N/A':
+                self.sub_data = self.Data.loc[self.Data['Subset']==self.sub_name].copy()
+                C = self.Filter()
+                if C == True:
+                    self.run()
+                    for c in self.Fc_Names:
+                        self.Data[c] = self.Data[c].fillna(self.sub_data[c])
+
+                    # Reverse the ordering of the array so that north is up
+                    self.FFP_Climatology[self.sub_name] = self.fclim_2d[::-1]
+                else:
+                    print(f'No valid input records for {self.sub_name}')
 
     def Filter(self):
         d = int(self.ini['FFP_Parameters']['exclude_wake'])
@@ -246,27 +197,74 @@ class RunClimatology():
                 self.sub_data.loc[self.sub_data[val].isna(),'process']=-1
 
         NA_flag = (self.sub_data.loc[self.sub_data['process']==-1].shape[0])
-        print(f'{NA_flag} records flagged for missing data')
+        if self.sub_data.loc[self.sub_data['process']==-1].shape[0]>0:
+            print(f'{NA_flag} records flagged for missing data')
 
-        for key,value in Exclude['under'].items():
-            flagged = self.sub_data.loc[self.sub_data[key]<value].shape[0]
-            if flagged > 0:
-                print(f'{flagged} records flagged for low {key}')  
-            self.sub_data.loc[self.sub_data[key]<value,'process']=0
+        if self.sub_data.loc[self.sub_data['process']==1].shape[0]>0:
+            for key,value in Exclude['under'].items():
+                flagged = self.sub_data.loc[self.sub_data[key]<value].shape[0]
+                if flagged > 0:
+                    print(f'{flagged} records flagged for low {key}')  
+                self.sub_data.loc[self.sub_data[key]<value,'process']=0
+                
+            for key,value in Exclude['over'].items():
+                flagged = self.sub_data.loc[self.sub_data[key]>value].shape[0]
+                if flagged > 0:
+                    print(f'{flagged} records flagged for high {key}')
+                self.sub_data.loc[self.sub_data[key]>value,'process']=0
+
+            for key,value in Exclude['between'].items():
+                flagged = self.sub_data.loc[(((self.sub_data[key]>value[0]) & (self.sub_data[key]<value[1]))|
+                                            ((self.sub_data[key]>value[2]) & (self.sub_data[key]<value[3])))].shape[0]
+                if flagged > 0:
+                    print(f'{flagged} records flagged for unacceptable {key}')
+                self.sub_data.loc[(((self.sub_data[key]>value[0]) & (self.sub_data[key]<value[1]))|
+                                            ((self.sub_data[key]>value[2]) & (self.sub_data[key]<value[3]))),'process']=0
+        return(self.sub_data.loc[self.sub_data['process']==1].shape[0]>0)
+        # else:
+        #     return(False)
+                
+    def run(self):         
+        print(f"Processing: {self.sub_data.loc[self.sub_data['process']==1].shape[0]} out of {self.sub_data.shape[0]} input records for {self.sub_name}")
+        self.fclim_2d = self.fclim_2d_empty.copy()
+        self.sub_data = self.sub_data.loc[self.sub_data['process'] == 1].copy()
+        
+        # Restricts multi-processing for small sub-sets
+        n_processes = min(int(self.ini['Multi_Processing']['processes']),self.sub_data.shape[0])
+
+        if (__name__ == 'FFP_Asssment' or __name__ == '__main__') and int(n_processes)>1:
             
-        for key,value in Exclude['over'].items():
-            flagged = self.sub_data.loc[self.sub_data[key]>value].shape[0]
-            if flagged > 0:
-                print(f'{flagged} records flagged for high {key}')
-            self.sub_data.loc[self.sub_data[key]>value,'process']=0
+            batchsize=min(self.sub_data.shape[0],int(self.ini['Multi_Processing']['batchSize']))
 
-        for key,value in Exclude['between'].items():
-            flagged = self.sub_data.loc[(((self.sub_data[key]>value[0]) & (self.sub_data[key]<value[1]))|
-                                        ((self.sub_data[key]>value[2]) & (self.sub_data[key]<value[3])))].shape[0]
-            if flagged > 0:
-                print(f'{flagged} records flagged for unacceptable {key}')
-            self.sub_data.loc[(((self.sub_data[key]>value[0]) & (self.sub_data[key]<value[1]))|
-                                        ((self.sub_data[key]>value[2]) & (self.sub_data[key]<value[3]))),'process']=0
+            ix = 0
+            while self.sub_data[ix:ix+batchsize].shape[0]>0:
+                batch = self.sub_data[ix:ix+batchsize].copy()
+                print(f'Processing Batch {ix}:{ix+batchsize}')
+                umean = batch[self.vars['umean']]
+                ustar = batch[self.vars['ustar']]
+                sigmav = batch[self.vars['sigmav']]
+                h = batch[self.vars['h']]
+                ol = batch[self.vars['ol']]
+                wind_dir = batch[self.vars['wind_dir']]
+                z0 = batch['z0']
+                zm = batch['zm-d']
+                index = batch.index
+                ix += batchsize
+                
+                with Pool(processes=int(n_processes)) as pool:
+                    for out in pool.starmap(partial(FFP,theta=self.theta,rho=self.rho,x_2d=self.x_2d,basemap=self.baseRaster),
+                                        zip(index,umean,ustar,sigmav,h,ol,wind_dir,z0,zm)):
+                        self.processOutputs(out)
+                    pool.close()
+
+        else:
+            for i,row in self.sub_data.iterrows():
+                print((i,row[self.vars['ustar']],row[self.vars['sigmav']],row[self.vars['h']],
+                    row[self.vars['ol']],row[self.vars['wind_dir']],row['z0'],row['zm-d']))
+                out = FFP(i,row[self.vars['umean']],row[self.vars['ustar']],row[self.vars['sigmav']],row[self.vars['h']],
+                    row[self.vars['ol']],row[self.vars['wind_dir']],row['z0'],row['zm-d'],
+                    self.theta,self.rho,self.x_2d,basemap=self.baseRaster)
+                self.processOutputs(out)
 
     def processOutputs(self,out):
         self.fclim_2d = self.fclim_2d + out[1] * self.symetric_Mask
@@ -283,37 +281,32 @@ class RunClimatology():
         self.fclim_2d_Full = self.fclim_2d_empty.copy()
         N = 0
 
-        
         self.feature = {"type": "Feature", "properties": {}, "geometry": {}}
         self.FeatureCollection = {
             "type": "FeatureCollection",
             "features": []
         }
 
-
-        with rasterio.open(f"{self.ini['Output']['raster_output']}{self.Site_code}_FFP_Clim_{self.dx}m.tif",'w+',driver='GTiff',
-                           width = self.nx, height = self.nx,count = len(self.sub_name)+1,dtype=np.float32,
+        with rasterio.open(f"{self.ini['Output']['dpath']}{self.Site_code}_FFP_{self.dx}m.tif",'w+',driver='GTiff',
+                           width = self.nx, height = self.nx,count = self.n_sub+2,dtype=np.float32,
                            transform = self.Transform,crs = ({'init': f'EPSG:{self.EPSG}'})) as raster_out:
-            for i,(self.sub_name,self.fclim_2d) in enumerate(self.Subset_Climatology.items()):
+            for i,(self.sub_name,self.fclim_2d) in enumerate(self.FFP_Climatology.items()):
                 self.fclim_2d_Full += self.fclim_2d.copy()
                 n = self.Data.loc[((self.Data['Subset']==self.sub_name)&(self.Data['process']==1))].shape[0]
                 N += n
-                self.fclim_2d = self.fclim_2d/n
-                self.contours_from_rio(i+1)
-                raster_out.write(self.fclim_2d,i+1)
-                # self.countours()
-            # print('Adj')
-            # print(N)
-            # print(np.nansum(self.fclim_2d_Full))
+                if len(self.FFP_Climatology.items()) >1:
+                    self.fclim_2d = self.fclim_2d/n
+                    self.contours_from_rio(i+1)
+                    raster_out.write(self.fclim_2d,i+1)
             self.fclim_2d = self.fclim_2d_Full/N
             raster_out.write(self.fclim_2d,i+2)
-            # print(np.nansum(self.fclim_2d))
             self.sub_name = 'Climatology'
-            # self.countours()
             self.contours_from_rio(i+2)
             self.contour_levels = gpd.GeoDataFrame.from_features(self.FeatureCollection["features"],crs=self.EPSG)
+
+            # if 
             
-            self.contour_levels.to_file(f"{self.ini['Output']['raster_output']}{self.Site_code}_FFP_Clim_{self.dx}m.shp")
+            self.contour_levels.to_file(f"{self.ini['Output']['dpath']}{self.Site_code}_FFP_{self.dx}m.shp")
 
             self.webMap()
             # self.gdf.geometry = gdf.geometry.simplify(FFP.dx/S_F).buffer(FFP.dx/S_F, join_style=1).buffer(FFP.dx/S_F, join_style=1)
@@ -336,8 +329,12 @@ class RunClimatology():
         fclim_2d_r = np.float32(fclim_2d_r)
 
         shapes = features.shapes(fclim_2d_r,mask=Mask,transform=self.Transform)
+        int_name = self.sub_name.replace(':','').replace('-','')
+        int_name = re.sub('[^0-9a-zA-Z]+', '_', int_name)
+        if int_name[0].isdigit():
+            int_name = 'I'+int_name
         for s in shapes:
-            self.feature["properties"] = {'r':s[1],'Interval':self.sub_name,'BandID':i}
+            self.feature["properties"] = {'r':s[1],'Interval':int_name,'BandID':i}
             self.feature["geometry"] = s[0]
             self.FeatureCollection['features'].append(self.feature.copy())
     
@@ -346,7 +343,7 @@ class RunClimatology():
         self.WGS['info'] = (self.WGS['r']*100).astype(int).astype(str)+ ' % Flux Source Area Contour<br>For: '+self.WGS['Interval'].astype(str)       
         self.WGS = self.WGS.sort_values(by='r',ascending=False)
 
-        MapTemplate = open(self.ini['Input_Files']['MapTemplate'],'r')
+        MapTemplate = open('MapTemplate.html','r')
         MapFmt = MapTemplate.read().replace('Tower_Coords',str(self.lon_lat))
 
         rep_VarList = 'var FFP_Contour_Levels = FFP_json'
@@ -359,9 +356,9 @@ class RunClimatology():
         Interval_list = "["
         for interval in self.WGS['Interval'].unique():
             Interval_list += f"'{interval}',"
-            VarList += rep_VarList.replace('FFP_Contour_Levels',interval+'_Contour_Levels').replace('FFP_json',self.WGS.loc[self.WGS['Interval']==interval].to_json())+'\n\n    '
-            SourceList += rep_SourceList.replace('FFP_Contour_Levels',interval+'_Contour_Levels')+'\n\n    '
-            Temp_Style = rep_StyleList.replace('FFP_Contour_Levels',interval+'_Contour_Levels')+'\n\n    '
+            VarList += rep_VarList.replace('FFP_Contour_Levels',interval).replace('FFP_json',self.WGS.loc[self.WGS['Interval']==interval].to_json())+'\n\n    '
+            SourceList += rep_SourceList.replace('FFP_Contour_Levels',interval)+'\n\n    '
+            Temp_Style = rep_StyleList.replace('FFP_Contour_Levels',interval)+'\n\n    '
             if interval == 'Climatology':
                 Temp_Style = Temp_Style.replace("'visibility':'none'","'visibility':'visible'")
             StyleList += Temp_Style
@@ -372,71 +369,7 @@ class RunClimatology():
         MapFmt = MapFmt.replace(rep_SourceList,SourceList)
         MapFmt = MapFmt.replace(rep_StyleList,StyleList)
         MapFmt = MapFmt.replace('SITE_json',self.Site_WGS.to_json())
-        with open(f"{self.ini['Output']['webmapoutput']}{self.Site_code}_FFP_Clim_{self.dx}m.html",'w+') as out:
+        with open(f"{self.ini['Output']['dpath']}{self.Site_code}_FFP_{self.dx}m.html",'w+') as out:
             out.write(MapFmt)
 
-        self.WGS.to_file(f"{self.ini['Output']['webmapoutput']}{self.Site_code}_FFP_Clim_{self.dx}m.geojson",driver='GeoJSON')
-
-    # def countours(self):
-    #     pclevs = np.empty(len(self.rs))
-    #     pclevs[:] = np.nan
-    #     ars = np.empty(len(self.rs))
-    #     ars[:] = np.nan
-        
-    #     sf = np.sort(self.fclim_2d, axis=None)[::-1]
-    #     msf = np.ma.masked_array(sf, mask=(np.isnan(sf) | np.isinf(sf))) 
-        
-    #     csf = msf.cumsum().filled(np.nan)
-
-    #     for ix, r in enumerate(self.rs):
-    #         dcsf = np.abs(csf - r)
-    #         pclevs[ix] = sf[np.nanargmin(dcsf)]
-    #         ars[ix] = csf[np.nanargmin(dcsf)]
-    #     self.contour_levels = {'r':[],'r_true':[],'geometry':[]}
-
-    #     for r, r_thresh, lev in zip(self.rs, ars, pclevs):
-    #         geom = self.getGeom(lev)
-    #         if geom is not None:
-    #             self.contour_levels['r'].append(r)
-    #             self.contour_levels['r_true'].append(r_thresh)
-    #             self.contour_levels['geometry'].append(Polygon((geom)))
-    
-    #     self.contour_levels = gpd.GeoDataFrame(data = {'r':self.contour_levels['r'],'r_true':self.contour_levels['r_true']},geometry=self.contour_levels['geometry'],crs=self.EPSG)
-        
-    #     if self.ini['Output']['shapefile_output']!='None':
-    #         self.contour_levels.to_file(f"{self.ini['Output']['raster_output']}{self.Site_code}_FFP_Clim_{self.dx}m_{self.sub_name.replace(':','')}.shp")
-        
-    #     if os.path.isdir(self.ini['Output']['webmapoutput']):
-    #         self.WGS = self.contour_levels.to_crs('WGS1984')
-    #         self.WGS['info'] = (self.WGS['r']*100).astype(int).astype(str)+ ' % Flux Source Area Contour'       
-    #         self.WGS = self.WGS.sort_values(by='r',ascending=False)
-
-    #         MapTemplate = open(self.ini['Input_Files']['MapTemplate'],'r')
-    #         MapFmt = MapTemplate.read().replace('Tower_Coords',str(self.lon_lat))
-
-    #         MapFmt = MapFmt.replace('FFP_json',self.WGS.to_json())
-    #         MapFmt = MapFmt.replace('SITE_json',self.Site_WGS.to_json())
-    #         with open(f"{self.ini['Output']['webmapoutput']}{self.Site_code}_FFP_Clim_{self.dx}m_{self.sub_name.replace(':','')}.html",'w+') as out:
-    #             out.write(MapFmt)
-
-    #         self.WGS.to_file(f"{self.ini['Output']['webmapoutput']}{self.Site_code}_FFP_Clim_{self.dx}m_{self.sub_name.replace(':','')}.geojson",driver='GeoJSON')
-
-    # def getGeom(self,lev):
-    #     cs = plt.contour(self.x_2d, self.y_2d, self.fclim_2d, [lev])
-    #     plt.close()
-    #     segs = cs.allsegs[0]#[0]
-
-    #     print('Update implementation')
-    #     print(cs.levels,len(cs.allsegs))
-    #     print(self.sub_name)
-    #     print()
-    #     xr = [vert[0] for vert in segs]
-    #     yr = [vert[1] for vert in segs]
-    #     #Set contour to None if it's found to reach the physical domain
-    #     if self.x_2d.min() >= min(segs[:, 0]) or max(segs[:, 0]) >= self.x_2d.max() or \
-    #     self.y_2d.min() >= min(segs[:, 1]) or max(segs[:, 1]) >= self.y_2d.max():
-    #         return None
-    #     else:
-    #         return([[x+self.Site_UTM.geometry.x[0], y+self.Site_UTM.geometry.y[0]] for x,y in zip(xr,yr)])
-
-        
+        self.WGS.to_file(f"{self.ini['Output']['dpath']}{self.Site_code}_FFP_{self.dx}m.geojson",driver='GeoJSON')

@@ -66,8 +66,8 @@
         top: 10px;
         left: 10px;
         border-radius: 3px;
-        width: 5%;
-        min-width: 75px;
+        max-width: 10%;
+        min-width: 5%;
         border: 1px solid rgba(0, 0, 0, 0.4);
         font-family: 'Open Sans', sans-serif;
         }
@@ -89,7 +89,7 @@
         }
         
     nav a:hover {
-        background-color: #f8f8f8;
+        background-color: #03dbfc;
         color: #404040;
         }
         
@@ -100,6 +100,7 @@
         
     nav a.active:hover {
         background: #3074a4;
+        color: #ffffff;
         }
 </style>
 </head>
@@ -108,12 +109,16 @@
 <nav id="layer_menu"></nav>
 <div id="map"></div>
 <div class="action_menu"> 
-    <button id="readme" class="btn">View Github</button>
+    <button id="readme" class="btn">FFP ReadMe</button>
 </div>
 
 <button id="zoomto" class="btn-control">Zoom to Footprint</button>
 <!-- <div id="map"></div> -->
 <script>
+    
+    document.getElementById('readme').addEventListener('click', () => {
+            window.open('https://github.com/June-Skeeter/FFP_Overlay');
+        });
 
     const FFP_Contour_Intervals = [];
 
@@ -226,6 +231,62 @@
                 });
 
     });
+
+
+    
+    
+    map.on('idle', () => {
+        // Set up the corresponding toggle button for each layer.
+        for (const id of FFP_Contour_Intervals) {
+        // Skip layers that already have a button set up.
+            if (document.getElementById(id) || id == 'Site_Name') {
+            continue;
+            }
+                // Create a link.
+                const link = document.createElement('a');
+                const initial_visibility = map.getLayoutProperty(
+                        id,
+                        'visibility'
+                        );
+                if (initial_visibility=='visible'){
+                    link.className = 'active';
+                }
+                else{
+                    link.className = '';
+                };
+                link.id = id;
+                link.href = '#';
+                link.textContent = id;
+                // Show or hide layer when the toggle is clicked.
+                link.onclick = function (e) {
+                    const clickedLayer = this.textContent;
+                    e.preventDefault();
+                    e.stopPropagation();    
+                    const visibility = map.getLayoutProperty(
+                        clickedLayer,
+                        'visibility'
+                        );
+                
+                    // Toggle layer visibility by changing the layout object's visibility property.
+                    if (visibility === 'visible') {
+                        map.setLayoutProperty(clickedLayer, 'visibility', 'none');
+                        // if (clickedLayer === 'BBS'){
+                        map.setLayoutProperty(clickedLayer+'_outline', 'visibility', 'none');
+                        // };
+                        this.className = '';
+                        } 
+                    else {
+                        map.setLayoutProperty(clickedLayer,'visibility','visible');
+                        map.setLayoutProperty(clickedLayer+'_outline', 'visibility', 'visible');
+                        this.className = 'active';
+                    }
+                };
+
+            const layers = document.getElementById('layer_menu');
+            layers.appendChild(link);
+            };
+        }  
+    );
 
     map.on('click', 'Climatology_Contour_Levels', (e) => {
         new mapboxgl.Popup()
