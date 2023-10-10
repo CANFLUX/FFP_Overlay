@@ -64,7 +64,7 @@ class RunClimatology():
 
         self.nx = int(self.domain*2 / self.dx)
 
-        x = np.linspace(-self.domain, self.domain, self.nx)# + 1)
+        x = np.linspace(-self.domain, self.domain, self.nx, dtype=np.float32)# + 1)
         self.x_2d, self.y_2d = np.meshgrid(x, x)
 
         # Polar coordinates
@@ -78,7 +78,7 @@ class RunClimatology():
         self.symetric_Mask = symetric_Mask*0 + 1
 
         # initialize rasters for footprint climatology
-        self.fclim_2d_empty = np.zeros(self.x_2d.shape)
+        self.fclim_2d_empty = np.zeros(self.x_2d.shape,dtype=np.float32)
 
         # basemap is an optional input, requires a 'path to vector layer' pluss a 'classification' key
         self.rasterizeBasemap(self.ini[self.Site_code]['basemap'],self.ini[self.Site_code]['basemap_class'])
@@ -87,6 +87,7 @@ class RunClimatology():
         self.read_Met()
         if self.FFP_Climatology != {}:
             self.summarizeClimatology()
+        self.Data.to_csv(f"{self.ini['Output']['dpath']}/FFP_Source_Area_{self.dx}m.csv")
 
     def rasterizeBasemap(self,basemap,basemap_class):
         x,y = self.Site_UTM.geometry.x[0],self.Site_UTM.geometry.y[0]
@@ -102,9 +103,9 @@ class RunClimatology():
             if basemap_class != 'None' and basemap_class != '':
                 self.baseVector = self.baseVector.dissolve(by=basemap_class).reset_index()
             else:
+                basemap_class = 'Unit'
+                self.baseVector[basemap_class]=self.baseVector.index
                 self.baseVector = self.baseVector.dissolve().reset_index(drop=True)
-                basemap_class = 'aoi'
-                self.baseVector[basemap_class] = basemap_class
             self.baseVector.index+=1
             self.baseRasterKey = self.baseVector[basemap_class].to_dict()
             self.Fc_Names = [self.baseRasterKey[i]+'_Fc' for i in self.baseVector.index.values]
@@ -128,7 +129,7 @@ class RunClimatology():
 
         self.vars = self.ini['Input_Variable_Names']
 
-        self.Data = pd.read_csv(self.ini['Input_Files']['dpath'],dtype=np.object_)
+        self.Data = pd.read_csv(self.ini['Input_Data']['dpath'],dtype=np.object_)
         
         # Set FFP inputs to floats
         for key,val in self.vars.items():
@@ -157,6 +158,7 @@ class RunClimatology():
         self.Data[self.Fc_Names] = np.nan
         for self.n_sub,self.sub_name in enumerate(self.Data['Subset'].unique()):
             if self.sub_name != 'N/A':
+                print('\nProcessing: ',self.sub_name)
                 self.sub_data = self.Data.loc[self.Data['Subset']==self.sub_name].copy()
                 C = self.Filter()
                 if C == True:
@@ -304,14 +306,14 @@ class RunClimatology():
             self.contours_from_rio(i+2)
             self.contour_levels = gpd.GeoDataFrame.from_features(self.FeatureCollection["features"],crs=self.EPSG)
 
-            # if 
+            if self.ini['Output']['smoothing_factor']!='':
+                S_F = float(self.ini['Output']['smoothing_factor'])
+                self.contour_levels.geometry = self.contour_levels.geometry.simplify(self.dx*S_F)
+                # .buffer(self.dx/S_F, join_style=1).buffer(self.dx/S_F, join_style=1)
             
             self.contour_levels.to_file(f"{self.ini['Output']['dpath']}{self.Site_code}_FFP_{self.dx}m.shp")
 
             self.webMap()
-            # self.gdf.geometry = gdf.geometry.simplify(FFP.dx/S_F).buffer(FFP.dx/S_F, join_style=1).buffer(FFP.dx/S_F, join_style=1)
-            # gdf.geometry = gdf.geometry.buffer(FFP.dx, cap_style=3).buffer(-FFP.dx, cap_style=3)
-            # self.gdf[self.gdf['r']>.5].plot(color='None',edgecolor='k')
 
     def contours_from_rio(self,i):
         fclim_2d_r = self.fclim_2d*0
