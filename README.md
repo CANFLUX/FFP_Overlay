@@ -27,7 +27,7 @@ If you have VS Code installed, with the python extension, you can:
 
 ### Windows setup
 
-This assumes you have Biomet.Net in "C:\"
+This assumes you have FFP_Overlay in "C:\"
 
 1. cd C:\FFP_Overlay\
 
@@ -39,7 +39,7 @@ This assumes you have Biomet.Net in "C:\"
 
 ### macOS/Linux setup
 
-This assumes you have Biomet.Net in "/home/"
+This assumes you have FFP_Overlay in "/home/"
 
 1. cd /home/FFP_Overlay/
 
