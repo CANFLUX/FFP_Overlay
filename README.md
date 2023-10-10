@@ -47,7 +47,7 @@ This assumes you have FFP_Overlay in "/home/"
 
 2. python3 -m venv .venv
 
-3. source ./.venv/bin/activate
+3. source .venv/bin/activate
 
 4. pip install -r ./requirements.txt
 
@@ -72,6 +72,6 @@ This assumes you have FFP_Overlay in "/home/"
 
 4. Within jupyter, select "venv" as your kernel.
 
-![Alt text](images/Jupyter.png.png)
+![Alt text](images/Jupyter.png)
 
     
