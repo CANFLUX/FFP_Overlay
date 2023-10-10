@@ -33,7 +33,9 @@ This assumes you have FFP_Overlay in "C:\"
 
 2. py -m venv .venv
 
-3. .\.venv\Scripts\activate
+    * *Note* if "py" doesn't work - try "python" or "python3" instead - the call to python may be different depending on your installation
+
+3. .venv\Scripts\activate
 
 4. pip install -r .\requirements.txt
 
@@ -48,3 +50,28 @@ This assumes you have FFP_Overlay in "/home/"
 3. source ./.venv/bin/activate
 
 4. pip install -r ./requirements.txt
+
+
+## Running Jupyter Notebook in a .venv?
+
+1. Install/activate the notebook as above depending on your OS
+
+2. In your terminal enter the command
+
+    ipython kernel install --user --name=venv
+
+3. Call the jupyter notebook from your terminal.  
+
+* On windows:
+
+    jupyter notebook
+
+* Mac/Linux:
+
+    jupyter-notebook
+
+4. Within jupyter, select "venv" as your kernel.
+
+![Alt text](images/Jupyter.png.png)
+
+    
