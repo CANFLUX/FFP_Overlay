@@ -9,7 +9,7 @@ Kljun, N., Calanca, P., Rotach, M. W., & Schmid, H. P. (2015). A simple two-dime
 
 ## Example Output
 
-Given half-hourly turbulence conditions and metadata for a site, this wrapper will calculate the FFP on a per-time-step basis, and output FFP contours over desired intervals in this web-map format.  If provided a landscape classification map, the program will also overlay each timestep's footprint with the map.  This allows the user to estimate the relative source contrition of different ecosystem components in some heterogeneous ecosystems.  @fig-output shows an example of the web map output for the Burns Bog 2 EC station.  
+Given half-hourly turbulence conditions and metadata for a site, this wrapper will calculate the FFP on a per-time-step basis, and output FFP contours over desired intervals in this web-map format.  If provided a landscape classification map, the program will also overlay each timestep's footprint with the map.  This allows the user to estimate the relative source contrition of different ecosystem components in some heterogeneous ecosystems.  @fig-output shows an example of the web map output for the Burns Bog 2 EC station.  @fig-classes gives an example of outputs that can be produced when a basemap ecosystem classification map is provided.
 
 ::: {#fig-output}
 
@@ -28,6 +28,27 @@ Given half-hourly turbulence conditions and metadata for a site, this wrapper wi
 </div>
 
 Flux footprint climatology (2021-2022) for the Burns Bog 2 Eddy Covariance Station, partitioned by season.
+
+:::
+
+
+::: {#fig-classes}
+
+<div style="overflow: hidden;
+  padding-top: 75%;
+  position: relative">
+  <iframe src="Example_Outputs/Summary_by_Basemap_Class.html" title="Processes" scrolling="no" frameborder="0"
+    style="border: 0;
+   height: 100%;
+   left: 0;
+   position: absolute;
+   top: 0;
+   width: 100%;">
+   <p>Your browser does not support iframes.</p>
+ </iframe>
+</div>
+
+Flux source area by ecosystem type (2021-2022) for the Burns Bog 2 Eddy Covariance Station, partitioned by season.
 
 :::
 

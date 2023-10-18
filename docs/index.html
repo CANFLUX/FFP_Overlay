@@ -124,7 +124,7 @@ title: "# FFP Overlay"
 <p>Kljun, N., Calanca, P., Rotach, M. W., &amp; Schmid, H. P. (2015). A simple two-dimensional parameterisation for Flux Footprint Prediction (FFP). Geoscientific Model Development, 8(11), 3695–3713.</p>
 <section id="example-output" class="level2">
 <h2 class="anchored" data-anchor-id="example-output">Example Output</h2>
-<p>Given half-hourly turbulence conditions and metadata for a site, this wrapper will calculate the FFP on a per-time-step basis, and output FFP contours over desired intervals in this web-map format. If provided a landscape classification map, the program will also overlay each timestep’s footprint with the map. This allows the user to estimate the relative source contrition of different ecosystem components in some heterogeneous ecosystems. <a href="#fig-output">Figure&nbsp;1</a> shows an example of the web map output for the Burns Bog 2 EC station.</p>
+<p>Given half-hourly turbulence conditions and metadata for a site, this wrapper will calculate the FFP on a per-time-step basis, and output FFP contours over desired intervals in this web-map format. If provided a landscape classification map, the program will also overlay each timestep’s footprint with the map. This allows the user to estimate the relative source contrition of different ecosystem components in some heterogeneous ecosystems. <a href="#fig-output">Figure&nbsp;1</a> shows an example of the web map output for the Burns Bog 2 EC station. <a href="#fig-classes">Figure&nbsp;2</a> gives an example of outputs that can be produced when a basemap ecosystem classification map is provided.</p>
 <div id="fig-output" class="quarto-figure quarto-figure-center anchored">
 <figure class="figure">
 <div style="overflow: hidden;
@@ -142,6 +142,25 @@ Your browser does not support iframes.
 <p></iframe><p></p>
 </div>
 <figcaption class="figure-caption">Figure&nbsp;1: Flux footprint climatology (2021-2022) for the Burns Bog 2 Eddy Covariance Station, partitioned by season.</figcaption>
+</figure>
+</div>
+<div id="fig-classes" class="quarto-figure quarto-figure-center anchored">
+<figure class="figure">
+<div style="overflow: hidden;
+  padding-top: 75%;
+  position: relative">
+<iframe src="Example_Outputs/Summary_by_Basemap_Class.html" title="Processes" scrolling="no" frameborder="0" style="border: 0;
+   height: 100%;
+   left: 0;
+   position: absolute;
+   top: 0;
+   width: 100%;">
+<p>
+Your browser does not support iframes.
+</p>
+<p></iframe><p></p>
+</div>
+<figcaption class="figure-caption">Figure&nbsp;2: Flux source area by ecosystem type (2021-2022) for the Burns Bog 2 Eddy Covariance Station, partitioned by season.</figcaption>
 </figure>
 </div>
 </section>
