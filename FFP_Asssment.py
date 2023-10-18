@@ -7,17 +7,19 @@ import pandas as pd
 import configparser
 import geopandas as gpd
 from functools import partial
-# import matplotlib.pyplot as plt
 from multiprocessing import Pool
 from Klujn_2015_Model import FFP
-# from shapely.geometry import Polygon
 from collections import defaultdict
-
 
 import rasterio
 from rasterio import features
 from rasterio.transform import from_origin
 
+from HelperFunctions import progressbar
+
+import random
+
+import matplotlib.pyplot as plt
 
 class RunClimatology():
 
@@ -200,26 +202,26 @@ class RunClimatology():
 
         NA_flag = (self.sub_data.loc[self.sub_data['process']==-1].shape[0])
         if self.sub_data.loc[self.sub_data['process']==-1].shape[0]>0:
-            print(f'{NA_flag} records flagged for missing data')
+            print(f'{NA_flag} records skipped: missing data')
 
         if self.sub_data.loc[self.sub_data['process']==1].shape[0]>0:
             for key,value in Exclude['under'].items():
                 flagged = self.sub_data.loc[self.sub_data[key]<value].shape[0]
                 if flagged > 0:
-                    print(f'{flagged} records flagged for low {key}')  
+                    print(f'{flagged} records skipped: low {key}')  
                 self.sub_data.loc[self.sub_data[key]<value,'process']=0
                 
             for key,value in Exclude['over'].items():
                 flagged = self.sub_data.loc[self.sub_data[key]>value].shape[0]
                 if flagged > 0:
-                    print(f'{flagged} records flagged for high {key}')
+                    print(f'{flagged} records skipped: high {key}')
                 self.sub_data.loc[self.sub_data[key]>value,'process']=0
 
             for key,value in Exclude['between'].items():
                 flagged = self.sub_data.loc[(((self.sub_data[key]>value[0]) & (self.sub_data[key]<value[1]))|
                                             ((self.sub_data[key]>value[2]) & (self.sub_data[key]<value[3])))].shape[0]
                 if flagged > 0:
-                    print(f'{flagged} records flagged for unacceptable {key}')
+                    print(f'{flagged} records skipped: unacceptable {key}')
                 self.sub_data.loc[(((self.sub_data[key]>value[0]) & (self.sub_data[key]<value[1]))|
                                             ((self.sub_data[key]>value[2]) & (self.sub_data[key]<value[3]))),'process']=0
         return(self.sub_data.loc[self.sub_data['process']==1].shape[0]>0)
@@ -239,9 +241,10 @@ class RunClimatology():
             batchsize=min(self.sub_data.shape[0],int(self.ini['Multi_Processing']['batchSize']))
 
             ix = 0
+            pb = progressbar(self.sub_data.shape[0],'Processing FFP')
             while self.sub_data[ix:ix+batchsize].shape[0]>0:
                 batch = self.sub_data[ix:ix+batchsize].copy()
-                print(f'Processing Batch {ix}:{ix+batchsize}')
+                # print(f' Batch {ix}:{ix+batchsize}')
                 umean = batch[self.vars['umean']]
                 ustar = batch[self.vars['ustar']]
                 sigmav = batch[self.vars['sigmav']]
@@ -258,6 +261,8 @@ class RunClimatology():
                                         zip(index,umean,ustar,sigmav,h,ol,wind_dir,z0,zm)):
                         self.processOutputs(out)
                     pool.close()
+                pb.step(batchsize)
+            pb.close()
 
         else:
             for i,row in self.sub_data.iterrows():
@@ -305,12 +310,22 @@ class RunClimatology():
             self.sub_name = 'Climatology'
             self.contours_from_rio(i+2)
             self.contour_levels = gpd.GeoDataFrame.from_features(self.FeatureCollection["features"],crs=self.EPSG)
+            # Dissolve to get small "corner cells" merged into main shape
+            self.contour_levels = self.contour_levels.dissolve(by=self.GDF_columns).reset_index()
+
 
             if self.ini['Output']['smoothing_factor']!='':
                 S_F = float(self.ini['Output']['smoothing_factor'])
-                self.contour_levels.geometry = self.contour_levels.geometry.simplify(self.dx*S_F)
-                # .buffer(self.dx/S_F, join_style=1).buffer(self.dx/S_F, join_style=1)
+                self.contour_levels.geometry = self.contour_levels.geometry.simplify(self.dx*S_F).buffer(self.dx*S_F, join_style=1).buffer(self.dx*S_F, join_style=1)
             
+            self.contour_levels = self.contour_levels.dissolve(by=self.GDF_columns).reset_index()
+
+            for i,row in self.contour_levels.iterrows():
+                Dissolved = self.contour_levels.loc[((self.contour_levels['BandID'] == row['BandID'])&
+                                                (self.contour_levels['r'] <= row['r']))].dissolve().geometry
+                self.contour_levels.loc[self.contour_levels.index == i,'geometry'] = [Dissolved[0]]
+        
+            self.contour_levels['Area'] = self.contour_levels.area
             self.contour_levels.to_file(f"{self.ini['Output']['dpath']}{self.Site_code}_FFP_{self.dx}m.shp")
 
             self.webMap()
@@ -332,17 +347,21 @@ class RunClimatology():
 
         shapes = features.shapes(fclim_2d_r,mask=Mask,transform=self.Transform)
         int_name = self.sub_name.replace(':','').replace('-','')
+        n_Obs = self.Data.loc[self.Data['Subset']==self.sub_name].shape[0]
         int_name = re.sub('[^0-9a-zA-Z]+', '_', int_name)
+        if int_name == 'Climatology':
+            n_Obs = self.Data.loc[self.Data['Subset']!='N/A'].shape[0]
         if int_name[0].isdigit():
             int_name = 'I'+int_name
         for s in shapes:
-            self.feature["properties"] = {'r':s[1],'Interval':int_name,'BandID':i}
+            self.feature["properties"] = {'r':s[1],'Interval':int_name,'BandID':i,'n_Obs':n_Obs}
             self.feature["geometry"] = s[0]
             self.FeatureCollection['features'].append(self.feature.copy())
+        self.GDF_columns=list(self.feature["properties"].keys())
     
     def webMap(self):
         self.WGS = self.contour_levels.to_crs('WGS1984')
-        self.WGS['info'] = (self.WGS['r']*100).astype(int).astype(str)+ ' % Flux Source Area Contour<br>For: '+self.WGS['Interval'].astype(str)       
+        self.WGS['info'] = '<h3>'+self.WGS['Interval'].astype(str)+'</h3><br>'+np.round(self.WGS['r']*100).astype(int).astype(str)+ ' % FFP Contour<br>'+ np.round(self.WGS['Area']*100).astype(int).astype(str)+' m<sup>2</sup>'     
         self.WGS = self.WGS.sort_values(by='r',ascending=False)
 
         MapTemplate = open('MapTemplate.html','r')
@@ -354,15 +373,19 @@ class RunClimatology():
         SourceList = ''
         rep_StyleList = MapFmt.split('// Style_Template_Start')[-1].split('// Style_Template_End')[0]
         StyleList = ''
-
         Interval_list = "["
-        for interval in self.WGS['Interval'].unique():
+        Sorted = self.WGS.groupby('Interval').first().sort_values(by='BandID')
+        for interval in Sorted.index:
             Interval_list += f"'{interval}',"
             VarList += rep_VarList.replace('FFP_Contour_Levels',interval).replace('FFP_json',self.WGS.loc[self.WGS['Interval']==interval].to_json())+'\n\n    '
             SourceList += rep_SourceList.replace('FFP_Contour_Levels',interval)+'\n\n    '
             Temp_Style = rep_StyleList.replace('FFP_Contour_Levels',interval)+'\n\n    '
             if interval == 'Climatology':
                 Temp_Style = Temp_Style.replace("'visibility':'none'","'visibility':'visible'")
+                c = '#f76605'
+            else:
+                c = "#%06x" % random.randint(0, 0xFFFFFF)
+            Temp_Style = Temp_Style.replace('Fill_Color',c)
             StyleList += Temp_Style
         Interval_list += "]"
 

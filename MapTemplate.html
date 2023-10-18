@@ -194,7 +194,7 @@
                 'visibility':'none'
             },
             'paint': {
-                'fill-color': '#f76605',
+                'fill-color': 'Fill_Color',
                 'fill-opacity': 0.15
                 }
             });
@@ -288,7 +288,7 @@
         }  
     );
 
-    map.on('click', 'Climatology_Contour_Levels', (e) => {
+    map.on('click', FFP_Contour_Intervals, (e) => {
         new mapboxgl.Popup()
             .setLngLat(e.lngLat)
             .setHTML(e.features[0].properties.info)

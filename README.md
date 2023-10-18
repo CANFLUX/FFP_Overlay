@@ -4,6 +4,26 @@ A wrapper for the [Kljun et al. 2015](https://gmd.copernicus.org/articles/8/3695
 
 Kljun, N., Calanca, P., Rotach, M. W., & Schmid, H. P. (2015). A simple two-dimensional parameterisation for Flux Footprint Prediction (FFP). Geoscientific Model Development, 8(11), 3695–3713.
 
+
+## Example Output
+
+Given half-hourly turbulence conditions and metadata for a site, this wrapper will calculate the FFP on a per-time-step basis, and output FFP contours over desired intervals in this web-map format.  If provided a landscape classification map, the program will also overlay each timestep's footprint with the map.  This allows the user to estimate the relative source contrition of different ecosystem components in some heterogeneous ecosystems.
+
+<div style="overflow: hidden;
+  padding-top: 75%;
+  position: relative">
+  <iframe src="Example_Outputs/BB2_FFP.htm." title="Processes" scrolling="no" frameborder="0"
+    style="border: 0;
+   height: 100%;
+   left: 0;
+   position: absolute;
+   top: 0;
+   width: 100%;">
+   <p>Your browser does not support iframes.</p>
+ </iframe>
+</div>
+
+
 ## Setup
 
 For best results, you should use Python 3.10 or higher and run this code in a virtual environment
