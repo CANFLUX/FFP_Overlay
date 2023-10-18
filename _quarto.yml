@@ -1,0 +1,20 @@
+project:
+  type: website
+  output-dir: docs
+  render:
+      - index.qmd
+
+website:
+  title: "FFP Overlay"
+  navbar:
+    left:
+      - href: index.qmd
+
+format:
+  html:
+    theme: cosmo
+    css: styles.css
+    toc: true
+
+
+
