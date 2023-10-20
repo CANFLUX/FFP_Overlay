@@ -1,6 +1,6 @@
 # FFP Overlay
 
-A wrapper for the [Kljun et al. 2015](https://gmd.copernicus.org/articles/8/3695/2015/gmd-8-3695-2015.html) flux footprint (FFP) function to incorporate spatial analysis in the FFP processing pipeline while parallelizing the processing to speed up computation times. 
+A wrapper for the [Kljun et al. 2015](https://gmd.copernicus.org/articles/8/3695/2015/gmd-8-3695-2015.html) flux footprint (FFP) function to incorporate spatial analysis in the FFP processing pipeline while parallelizing the processing to speed up computation times.  Click [here to see example output](https://june-skeeter.github.io/FFP_Overlay/).
 
 Kljun, N., Calanca, P., Rotach, M. W., & Schmid, H. P. (2015). A simple two-dimensional parameterisation for Flux Footprint Prediction (FFP). Geoscientific Model Development, 8(11), 3695–3713.
 
