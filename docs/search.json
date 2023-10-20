@@ -2,29 +2,22 @@
   {
     "objectID": "index.html",
     "href": "index.html",
-    "title": "FFP Overlay",
+    "title": "About FFP Overlay",
     "section": "",
-    "text": "A wrapper for the Kljun et al. 2015 flux footprint (FFP) function to incorporate spatial analysis in the FFP processing pipeline while parallelizing the processing to speed up computation times.\nKljun, N., Calanca, P., Rotach, M. W., & Schmid, H. P. (2015). A simple two-dimensional parameterisation for Flux Footprint Prediction (FFP). Geoscientific Model Development, 8(11), 3695–3713."
+    "text": "This Python application is a wrapper for the Kljun et al. 2015 flux footprint prediction (FFP) model. It allows users to incorporate spatial analysis in the FFP processing pipeline while speeding up FFP calculation parallelizing the processing.\nKljun, N., Calanca, P., Rotach, M. W., & Schmid, H. P. (2015). A simple two-dimensional parameterisation for Flux Footprint Prediction (FFP). Geoscientific Model Development, 8(11), 3695–3713."
+  },
+  {
+    "objectID": "index.html#access",
+    "href": "index.html#access",
+    "title": "About FFP Overlay",
+    "section": "Access",
+    "text": "Access\nYou may find the FFP Overlay repository here along with documentation and instructions for installing the application."
   },
   {
     "objectID": "index.html#example-output",
     "href": "index.html#example-output",
-    "title": "FFP Overlay",
+    "title": "About FFP Overlay",
     "section": "Example Output",
     "text": "Example Output\nGiven half-hourly turbulence conditions and metadata for a site, this wrapper will calculate the FFP on a per-time-step basis, and output FFP contours over desired intervals in this web-map format. If provided a landscape classification map, the program will also overlay each timestep’s footprint with the map. This allows the user to estimate the relative source contrition of different ecosystem components in some heterogeneous ecosystems. Figure 1 shows an example of the web map output for the Burns Bog 2 EC station. Figure 2 gives an example of outputs that can be produced when a basemap ecosystem classification map is provided.\n\n\n\n\n&lt;p&gt;\nYour browser does not support iframes.\n&lt;/p&gt;\n&lt;p&gt;\n\nFigure 1: Flux footprint climatology (2021-2022) for the Burns Bog 2 Eddy Covariance Station, partitioned by season.\n\n\n\n\n\n\n&lt;p&gt;\nYour browser does not support iframes.\n&lt;/p&gt;\n&lt;p&gt;\n\nFigure 2: Flux source area by ecosystem type (2021-2022) for the Burns Bog 2 Eddy Covariance Station, partitioned by season."
-  },
-  {
-    "objectID": "index.html#setup",
-    "href": "index.html#setup",
-    "title": "FFP Overlay",
-    "section": "Setup",
-    "text": "Setup\nFor best results, you should use Python 3.10 or higher and run this code in a virtual environment\n\nIts is not explicitly required to use virtual environments, but it is good practice to ensure all dependencies are met and you don’t corrupt your base Python installation\nThe root folder “FFP_Overlay” has a “requirements.txt” which lists the packages installed in the virtual environment\n\nTo install the packages, you can follow the steps listed below\nIt is best to do this in a dedicated virtual environment so you don’t run into any conflicts with pre-existing installations in your main python environment.\nSee the instructions below to create a generic virtual environment with pip ## Create a virtual environment\n\n\n\nUsing Visual Studio (VS) Code\nIf you have VS Code installed, with the python extension, you can:\n\nOpen the FFP_Overlay folder in VS Code\nHit ctrl + shift + p &gt; and select “Create Python Environment”\n\nUse Venv, not conda\n\nYou will be prompted to select dependencies to install\n\nSelect “requirements.txt” form the menu. This will automatically install all required packages for you.\n\n\n\n\nWindows setup\nThis assumes you have FFP_Overlay in “C:\"\n\ncd C:_Overlay\n\npy -m venv .venv\n\nNote if “py” doesn’t work - try “python” or “python3” instead - the call to python may be different depending on your installation\n\n.venv\npip install -r ..txt\n\n\n\nmacOS/Linux setup\nThis assumes you have FFP_Overlay in “/home/”\n\ncd /home/FFP_Overlay/\npython3 -m venv .venv\nsource .venv/bin/activate\npip install -r ./requirements.txt"
-  },
-  {
-    "objectID": "index.html#running-jupyter-notebook-in-a-.venv",
-    "href": "index.html#running-jupyter-notebook-in-a-.venv",
-    "title": "FFP Overlay",
-    "section": "Running Jupyter Notebook in a .venv?",
-    "text": "Running Jupyter Notebook in a .venv?\n\nInstall/activate the notebook as above depending on your OS\nIn your terminal enter the command\nipython kernel install –user –name=venv\nCall the jupyter notebook from your terminal.\n\n\nOn windows:\njupyter notebook\nMac/Linux:\njupyter-notebook\n\n\nWithin jupyter, select “venv” as your kernel.\n\n\n\n\nAlt text"
   }
 ]

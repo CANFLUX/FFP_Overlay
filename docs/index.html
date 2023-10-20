@@ -7,7 +7,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
 
 
-<title>FFP Overlay</title>
+<title>FFP Overlay - About FFP Overlay</title>
 <style>
 code{white-space: pre-wrap;}
 span.smallcaps{font-variant: small-caps;}
@@ -83,10 +83,17 @@ ul.task-list li input[type="checkbox"] {
             <ul class="navbar-nav navbar-nav-scroll me-auto">
   <li class="nav-item">
     <a class="nav-link active" href="./index.html" rel="" target="" aria-current="page">
- <span class="menu-text">Example Output</span></a>
+ <span class="menu-text">About FFP Overlay</span></a>
   </li>  
 </ul>
-            <div class="quarto-navbar-tools ms-auto">
+            <ul class="navbar-nav navbar-nav-scroll ms-auto">
+  <li class="nav-item compact">
+    <a class="nav-link" href="https://github.com/June-Skeeter/FFP_Overlay" rel="" target=""><i class="bi bi-github" role="img" aria-label="Quarto GitHub">
+</i> 
+ <span class="menu-text"></span></a>
+  </li>  
+</ul>
+            <div class="quarto-navbar-tools">
 </div>
           </div> <!-- /navcollapse -->
       </div> <!-- /container-fluid -->
@@ -101,27 +108,37 @@ ul.task-list li input[type="checkbox"] {
     <h2 id="toc-title">On this page</h2>
    
   <ul>
-  <li><a href="#example-output" id="toc-example-output" class="nav-link active" data-scroll-target="#example-output">Example Output</a></li>
-  <li><a href="#setup" id="toc-setup" class="nav-link" data-scroll-target="#setup">Setup</a>
-  <ul class="collapse">
-  <li><a href="#using-visual-studio-vs-code" id="toc-using-visual-studio-vs-code" class="nav-link" data-scroll-target="#using-visual-studio-vs-code">Using Visual Studio (VS) Code</a></li>
-  <li><a href="#windows-setup" id="toc-windows-setup" class="nav-link" data-scroll-target="#windows-setup">Windows setup</a></li>
-  <li><a href="#macoslinux-setup" id="toc-macoslinux-setup" class="nav-link" data-scroll-target="#macoslinux-setup">macOS/Linux setup</a></li>
-  </ul></li>
-  <li><a href="#running-jupyter-notebook-in-a-.venv" id="toc-running-jupyter-notebook-in-a-.venv" class="nav-link" data-scroll-target="#running-jupyter-notebook-in-a-.venv">Running Jupyter Notebook in a .venv?</a></li>
+  <li><a href="#access" id="toc-access" class="nav-link active" data-scroll-target="#access">Access</a></li>
+  <li><a href="#example-output" id="toc-example-output" class="nav-link" data-scroll-target="#example-output">Example Output</a></li>
   </ul>
 </nav>
     </div>
 <!-- main -->
 <main class="content" id="quarto-document-content">
 
+<header id="title-block-header" class="quarto-title-block default">
+<div class="quarto-title">
+<h1 class="title">About FFP Overlay</h1>
+</div>
 
 
-<!-- ---
-title: "# FFP Overlay"
---- -->
-<p>A wrapper for the <a href="https://gmd.copernicus.org/articles/8/3695/2015/gmd-8-3695-2015.html">Kljun et al.&nbsp;2015</a> flux footprint (FFP) function to incorporate spatial analysis in the FFP processing pipeline while parallelizing the processing to speed up computation times.</p>
+
+<div class="quarto-title-meta">
+
+    
+  
+    
+  </div>
+  
+
+</header>
+
+<p>This Python application is a wrapper for the <a href="https://gmd.copernicus.org/articles/8/3695/2015/gmd-8-3695-2015.html">Kljun et al.&nbsp;2015</a> flux footprint prediction (FFP) model. It allows users to incorporate spatial analysis in the FFP processing pipeline while speeding up FFP calculation parallelizing the processing.</p>
 <p>Kljun, N., Calanca, P., Rotach, M. W., &amp; Schmid, H. P. (2015). A simple two-dimensional parameterisation for Flux Footprint Prediction (FFP). Geoscientific Model Development, 8(11), 3695–3713.</p>
+<section id="access" class="level2">
+<h2 class="anchored" data-anchor-id="access">Access</h2>
+<p>You may find the FFP Overlay repository <a href="https://github.com/June-Skeeter/FFP_Overlay">here</a> along with documentation and instructions for installing the application.</p>
+</section>
 <section id="example-output" class="level2">
 <h2 class="anchored" data-anchor-id="example-output">Example Output</h2>
 <p>Given half-hourly turbulence conditions and metadata for a site, this wrapper will calculate the FFP on a per-time-step basis, and output FFP contours over desired intervals in this web-map format. If provided a landscape classification map, the program will also overlay each timestep’s footprint with the map. This allows the user to estimate the relative source contrition of different ecosystem components in some heterogeneous ecosystems. <a href="#fig-output">Figure&nbsp;1</a> shows an example of the web map output for the Burns Bog 2 EC station. <a href="#fig-classes">Figure&nbsp;2</a> gives an example of outputs that can be produced when a basemap ecosystem classification map is provided.</p>
@@ -161,82 +178,6 @@ Your browser does not support iframes.
 <p></iframe><p></p>
 </div>
 <figcaption class="figure-caption">Figure&nbsp;2: Flux source area by ecosystem type (2021-2022) for the Burns Bog 2 Eddy Covariance Station, partitioned by season.</figcaption>
-</figure>
-</div>
-</section>
-<section id="setup" class="level2">
-<h2 class="anchored" data-anchor-id="setup">Setup</h2>
-<p>For best results, you should use Python 3.10 or higher and run this code in a virtual environment</p>
-<ul>
-<li>Its is not explicitly required to use virtual environments, but it is good practice to ensure all dependencies are met and you don’t corrupt your base Python installation</li>
-<li>The root folder “FFP_Overlay” has a “requirements.txt” which lists the packages installed in the virtual environment
-<ul>
-<li>To install the packages, you can follow the steps listed below</li>
-<li>It is best to do this in a dedicated virtual environment so you don’t run into any conflicts with pre-existing installations in your main python environment.</li>
-<li>See the instructions below to create a generic virtual environment with pip ## Create a virtual environment</li>
-</ul></li>
-</ul>
-<section id="using-visual-studio-vs-code" class="level3">
-<h3 class="anchored" data-anchor-id="using-visual-studio-vs-code">Using Visual Studio (VS) Code</h3>
-<p>If you have VS Code installed, with the python extension, you can:</p>
-<ol type="1">
-<li>Open the FFP_Overlay folder in VS Code</li>
-<li>Hit ctrl + shift + p &gt; and select “Create Python Environment”
-<ul>
-<li>Use Venv, not conda</li>
-</ul></li>
-<li>You will be prompted to select dependencies to install
-<ul>
-<li>Select “requirements.txt” form the menu. This will automatically install all required packages for you.</li>
-</ul></li>
-</ol>
-</section>
-<section id="windows-setup" class="level3">
-<h3 class="anchored" data-anchor-id="windows-setup">Windows setup</h3>
-<p>This assumes you have FFP_Overlay in “C:"</p>
-<ol type="1">
-<li><p>cd C:_Overlay<br>
-</p></li>
-<li><p>py -m venv .venv</p>
-<ul>
-<li><em>Note</em> if “py” doesn’t work - try “python” or “python3” instead - the call to python may be different depending on your installation</li>
-</ul></li>
-<li><p>.venv</p></li>
-<li><p>pip install -r ..txt</p></li>
-</ol>
-</section>
-<section id="macoslinux-setup" class="level3">
-<h3 class="anchored" data-anchor-id="macoslinux-setup">macOS/Linux setup</h3>
-<p>This assumes you have FFP_Overlay in “/home/”</p>
-<ol type="1">
-<li><p>cd /home/FFP_Overlay/</p></li>
-<li><p>python3 -m venv .venv</p></li>
-<li><p>source .venv/bin/activate</p></li>
-<li><p>pip install -r ./requirements.txt</p></li>
-</ol>
-</section>
-</section>
-<section id="running-jupyter-notebook-in-a-.venv" class="level2">
-<h2 class="anchored" data-anchor-id="running-jupyter-notebook-in-a-.venv">Running Jupyter Notebook in a .venv?</h2>
-<ol type="1">
-<li><p>Install/activate the notebook as above depending on your OS</p></li>
-<li><p>In your terminal enter the command</p>
-<p>ipython kernel install –user –name=venv</p></li>
-<li><p>Call the jupyter notebook from your terminal.</p></li>
-</ol>
-<ul>
-<li><p>On windows:</p>
-<p>jupyter notebook</p></li>
-<li><p>Mac/Linux:</p>
-<p>jupyter-notebook</p></li>
-</ul>
-<ol start="4" type="1">
-<li>Within jupyter, select “venv” as your kernel.</li>
-</ol>
-<div class="quarto-figure quarto-figure-center">
-<figure class="figure">
-<p><img src="images/Jupyter.png" class="img-fluid figure-img"></p>
-<figcaption class="figure-caption">Alt text</figcaption>
 </figure>
 </div>
 

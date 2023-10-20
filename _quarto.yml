@@ -9,6 +9,10 @@ website:
   navbar:
     left:
       - href: index.qmd
+    right:
+      - icon: github
+        href: https://github.com/June-Skeeter/FFP_Overlay
+        aria-label: Quarto GitHub
 
 format:
   html:
