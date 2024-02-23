@@ -55,3 +55,25 @@ Flux footprint climatology (2021-2022) for the Burns Bog 2 Eddy Covariance Stati
 Flux source area by ecosystem type (2021-2022) for the Burns Bog 2 Eddy Covariance Station, partitioned by season.
 
 :::
+
+
+
+::: {#fig-output}
+
+<div style="overflow: hidden;
+  padding-top: 75%;
+  position: relative">
+  <iframe src="Example_Outputs/FisIsland_FFP_2m.html" title="Processes" scrolling="no" frameborder="0"
+    style="border: 0;
+   height: 100%;
+   left: 0;
+   position: absolute;
+   top: 0;
+   width: 100%;">
+   <p>Your browser does not support iframes.</p>
+ </iframe>
+</div>
+
+Flux footprint climatology (2017 Growing Season) for Fish Island
+
+:::
