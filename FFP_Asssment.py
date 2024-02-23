@@ -25,34 +25,43 @@ class RunClimatology():
 
     def __init__(self,Site_code,Site_Config,Subsets=None,Basemap=None,Basemap_Class=None):
         self.Subsets = Subsets
+            
+        if isinstance(Site_code, str):
+            Site_code=[Site_code]
         self.Site_code = Site_code
         self.ini = configparser.ConfigParser()
         self.ini.read('../MicrometPy.ini')
         self.ini.read('configuration.ini')
         self.ini.read(Site_Config)
-        if Basemap is not None and Basemap_Class is not None:
-            self.ini[self.Site_code]['basemap'] = Basemap
-            self.ini[self.Site_code]['basemap_class'] = Basemap_Class
-        else:
-            self.ini[self.Site_code]['basemap'] = 'N/A'
-            self.ini[self.Site_code]['basemap_class'] = 'N/A'
+        for sc in self.Site_code:
+            if Basemap is not None and Basemap_Class is not None:
+                self.ini[sc]['basemap'] = Basemap
+                self.ini[sc]['basemap_class'] = Basemap_Class
+            else:
+                self.ini[sc]['basemap'] = 'N/A'
+                self.ini[sc]['basemap_class'] = 'N/A'
         
         # Dump Site to a Dataframe
-        Site = pd.DataFrame(data=dict(self.ini[self.Site_code]),index=[0])
+        # Site = pd.DataFrame(data=dict(self.ini[self.Site_code]),index=[0])
+        Site={sc:dict(self.ini[sc]) for i,sc in enumerate(self.Site_code)}
+        Site = pd.DataFrame(Site).T
+        Site.index=[sc for sc in self.Site_code]
+
         for c in Site.columns:
             try:
                 Site[c]=Site[c].astype('float64')
             except:
                 pass
-        
+        # print
+        # Default centerpoint to first site provided
         self.lon_lat = list(Site[['longitude','latitude']].values[0])
         self.EPSG = utm_zone.epsg(self.lon_lat)
         
         self.Site_WGS = gpd.GeoDataFrame(Site, geometry=gpd.points_from_xy(Site.longitude, Site.latitude), crs="EPSG:4326")
         self.Site_UTM = self.Site_WGS.to_crs(self.EPSG)
-        self.Site_UTM = self.Site_UTM.reset_index(drop=True)
+        # self.Site_UTM = self.Site_UTM.reset_index(drop=True)
 
-        self.z = float(self.ini[self.Site_code]['zm'])
+        # self.z = float(self.ini[self.Site_code]['zm'])
 
         # =====================================================================================
         # Define grid parameters for model
@@ -83,7 +92,8 @@ class RunClimatology():
         self.fclim_2d_empty = np.zeros(self.x_2d.shape,dtype=np.float32)
 
         # basemap is an optional input, requires a 'path to vector layer' pluss a 'classification' key
-        self.rasterizeBasemap(self.ini[self.Site_code]['basemap'],self.ini[self.Site_code]['basemap_class'])
+        # update in future to allow for multiple basemaps
+        self.rasterizeBasemap(self.ini[self.Site_code[0]]['basemap'],self.ini[self.Site_code[0]]['basemap_class'])
 
         self.FFP_Climatology = {}
         self.read_Met()
@@ -92,7 +102,7 @@ class RunClimatology():
         self.Data.to_csv(f"{self.ini['Output']['dpath']}/FFP_Source_Area_{self.dx}m.csv")
 
     def rasterizeBasemap(self,basemap,basemap_class):
-        x,y = self.Site_UTM.geometry.x[0],self.Site_UTM.geometry.y[0]
+        x,y = self.Site_UTM.geometry.x.iloc[0],self.Site_UTM.geometry.y.iloc[0]
         west = x-(self.nx*self.dx)/2
         north = y+(self.nx*self.dx)/2
         self.Transform = from_origin(west,north,self.dx,self.dx)
@@ -132,30 +142,38 @@ class RunClimatology():
         self.vars = self.ini['Input_Variable_Names']
 
         self.Data = pd.read_csv(self.ini['Input_Data']['dpath'],dtype=np.object_)
-        
-        # Set FFP inputs to floats
-        for key,val in self.vars.items():
-            if val in self.Data.columns:
-                self.Data[val]=self.Data[val].astype(np.float_)
-
-        if self.vars['canopy_height'] not in self.Data:
-            self.Data['canopy_height']=self.Site_UTM['canopy_height'][0]
-        else:
-            self.Data[self.vars['canopy_height']] = self.Data[self.vars['canopy_height']].fillna(self.Site_UTM['canopy_height'][0])
-        if self.vars['z0'] != '':
-            self.Data['z0'] = self.Data[self.vars['z0']].copy()
-        if self.ini['Assumptions']['roughness_length'] != 'None':
-            self.Data['z0'] = self.Data[self.vars['canopy_height']]*float(self.ini['Assumptions']['roughness_length'])
-        elif self.ini['Assumptions']['roughness_length'] == 'None':
-            self.Data['z0'] = None
-        self.Data['zm-d'] = self.z-(self.Data[self.vars['canopy_height']]*float(self.ini['Assumptions']['displacement_height']))
-        self.Data['zm/ol'] = self.Data['zm-d']/self.Data[self.vars['ol']]
 
         if self.Subsets is not None:
             self.Data['Subset']=self.Data[self.Subsets]
             self.Data['Subset'] = self.Data['Subset'].fillna('N/A')
         else:
            self.Data['Subset'] = 'Climatology'
+
+        self.Data = self.Data.merge(pd.Series(self.Site_code,name='Site_Code'),how='cross')
+        self.Data.loc[self.Data['Subset']!='N/A','Subset']+=' '+self.Data.loc[self.Data['Subset']!='N/A','Site_Code']
+        
+        # Set FFP inputs to floats
+        for key,val in self.vars.items():
+            if val in self.Data.columns:
+                self.Data[val]=self.Data[val].astype(np.float_)
+
+        for static_variables in ['canopy_height','zm','bearing']:
+            if self.vars[static_variables] not in self.Data:
+                for sc in self.Site_code:
+                    self.Data.loc[self.Data['Site_Code']==sc,self.vars[static_variables]]=self.Site_UTM.loc[sc,self.vars[static_variables]]
+            else:
+                for sc in self.Site_code:
+                    self.Data.loc[self.Data['Site_Code']==sc,self.vars[static_variables]] = self.Data.loc[self.Data['Site_Code']==sc,self.vars[static_variables]].fillna(self.Site_UTM.loc[sc,static_variables])
+
+        if self.vars['z0'] != '':
+            self.Data['z0'] = self.Data[self.vars['z0']].copy()
+        if self.ini['Assumptions']['roughness_length'] != 'None':
+            self.Data['z0'] = self.Data[self.vars['canopy_height']]*float(self.ini['Assumptions']['roughness_length'])
+        elif self.ini['Assumptions']['roughness_length'] == 'None':
+            self.Data['z0'] = None
+        self.Data['zm-d'] = self.Data['zm']-(self.Data[self.vars['canopy_height']]*float(self.ini['Assumptions']['displacement_height']))
+        self.Data['zm/ol'] = self.Data['zm-d']/self.Data[self.vars['ol']]
+
             
         self.Data[self.Fc_Names] = np.nan
         for self.n_sub,self.sub_name in enumerate(self.Data['Subset'].unique()):
@@ -167,15 +185,16 @@ class RunClimatology():
                     self.run()
                     for c in self.Fc_Names:
                         self.Data[c] = self.Data[c].fillna(self.sub_data[c])
-
+                    sc = self.sub_data['Site_Code'].values[0]
+                    self.FFP_Climatology[sc]={}
                     # Reverse the ordering of the array so that north is up
-                    self.FFP_Climatology[self.sub_name] = self.fclim_2d[::-1]
+                    self.FFP_Climatology[sc][self.sub_name] = self.fclim_2d[::-1]
                 else:
                     print(f'No valid input records for {self.sub_name}')
 
     def Filter(self):
         d = int(self.ini['FFP_Parameters']['exclude_wake'])
-        b = float(self.ini[self.Site_code]['bearing'])
+        # b = float(self.ini[self.Site_code]['bearing'])
         Exclude = {
             'under':{
                 'zm/ol':-15.5,
@@ -183,16 +202,16 @@ class RunClimatology():
                 self.vars['ustar']:.1,
                 self.vars['sigmav']:0,
                 self.vars['h']:10,
-                self.vars['h']:self.sub_data['zm-d'],
+                # self.vars['h']:self.sub_data['zm-d'],
                 self.vars['wind_dir']:0,
             },
             'over':{
                 'zm-d':self.sub_data[self.vars['h']],
                 self.vars['wind_dir']:360
             },
-            'between':{
-                self.vars['wind_dir']:[b-180-d,b-180+d,b+180-d,b+180+d]
-            }
+            # 'between':{
+            #     self.vars['wind_dir']:[b-180-d,b-180+d,b+180-d,b+180+d]
+            # }
         }
         self.sub_data['process'] = 1
 
@@ -217,13 +236,16 @@ class RunClimatology():
                     print(f'{flagged} records skipped: high {key}')
                 self.sub_data.loc[self.sub_data[key]>value,'process']=0
 
-            for key,value in Exclude['between'].items():
-                flagged = self.sub_data.loc[(((self.sub_data[key]>value[0]) & (self.sub_data[key]<value[1]))|
-                                            ((self.sub_data[key]>value[2]) & (self.sub_data[key]<value[3])))].shape[0]
-                if flagged > 0:
-                    print(f'{flagged} records skipped: unacceptable {key}')
-                self.sub_data.loc[(((self.sub_data[key]>value[0]) & (self.sub_data[key]<value[1]))|
-                                            ((self.sub_data[key]>value[2]) & (self.sub_data[key]<value[3]))),'process']=0
+            # for key,value in Exclude['between'].items():
+            
+                
+                # self.vars['wind_dir']:[b-180-d,b-180+d,b+180-d,b+180+d]
+            flagged = self.sub_data.loc[(((self.sub_data['wind_dir']>self.sub_data['bearing']-180-d) & (self.sub_data['wind_dir']<self.sub_data['bearing']-180+d))|
+                                        ((self.sub_data['wind_dir']>self.sub_data['bearing']+180-d) & (self.sub_data['wind_dir']<self.sub_data['bearing']+180+d))),'process'].shape[0]
+            if flagged > 0:
+                print(f'{flagged} records skipped: unacceptable {key}')
+            self.sub_data.loc[(((self.sub_data['wind_dir']>self.sub_data['bearing']-180-d) & (self.sub_data['wind_dir']<self.sub_data['bearing']-180+d))|
+                                            ((self.sub_data['wind_dir']>self.sub_data['bearing']+180-d) & (self.sub_data['wind_dir']<self.sub_data['bearing']+180+d))),'process']=0
         return(self.sub_data.loc[self.sub_data['process']==1].shape[0]>0)
         # else:
         #     return(False)
@@ -266,8 +288,6 @@ class RunClimatology():
 
         else:
             for i,row in self.sub_data.iterrows():
-                print((i,row[self.vars['ustar']],row[self.vars['sigmav']],row[self.vars['h']],
-                    row[self.vars['ol']],row[self.vars['wind_dir']],row['z0'],row['zm-d']))
                 out = FFP(i,row[self.vars['umean']],row[self.vars['ustar']],row[self.vars['sigmav']],row[self.vars['h']],
                     row[self.vars['ol']],row[self.vars['wind_dir']],row['z0'],row['zm-d'],
                     self.theta,self.rho,self.x_2d,basemap=self.baseRaster)
@@ -289,44 +309,47 @@ class RunClimatology():
         N = 0
 
         self.feature = {"type": "Feature", "properties": {}, "geometry": {}}
-        self.FeatureCollection = {
-            "type": "FeatureCollection",
-            "features": []
-        }
+        self.All_Contours = gpd.GeoDataFrame()
+        for sc in self.Site_code:
+            self.FeatureCollection = {
+                "type": "FeatureCollection",
+                "features": []
+            }
+            with rasterio.open(f"{self.ini['Output']['dpath']}{sc}_FFP_{self.dx}m.tif",'w+',driver='GTiff',
+                            width = self.nx, height = self.nx,count = self.n_sub+2,dtype=np.float32,
+                            transform = self.Transform,crs = ({'init': f'EPSG:{self.EPSG}'})) as raster_out:
+                for i,(self.sub_name,self.fclim_2d) in enumerate(self.FFP_Climatology[sc].items()):
+                    self.fclim_2d_Full += self.fclim_2d.copy()
+                    n = self.Data.loc[((self.Data['Subset']==self.sub_name)&(self.Data['process']==1))].shape[0]
+                    N += n
+                    if len(self.FFP_Climatology[sc].items()) >0:
+                        self.fclim_2d = self.fclim_2d/n
+                        self.contours_from_rio(i+1)
+                        raster_out.write(self.fclim_2d,i+1)
+                if i > 0:
+                    self.fclim_2d = self.fclim_2d_Full/N
+                    self.contours_from_rio(i+2)
+                    raster_out.write(self.fclim_2d,i+2)
+                    self.sub_name = 'Climatology '+sc
+                self.contour_levels = gpd.GeoDataFrame.from_features(self.FeatureCollection["features"],crs=self.EPSG)
+                # Dissolve to get small "corner cells" merged into main shape
+                self.contour_levels = self.contour_levels.dissolve(by=self.GDF_columns).reset_index()
 
-        with rasterio.open(f"{self.ini['Output']['dpath']}{self.Site_code}_FFP_{self.dx}m.tif",'w+',driver='GTiff',
-                           width = self.nx, height = self.nx,count = self.n_sub+2,dtype=np.float32,
-                           transform = self.Transform,crs = ({'init': f'EPSG:{self.EPSG}'})) as raster_out:
-            for i,(self.sub_name,self.fclim_2d) in enumerate(self.FFP_Climatology.items()):
-                self.fclim_2d_Full += self.fclim_2d.copy()
-                n = self.Data.loc[((self.Data['Subset']==self.sub_name)&(self.Data['process']==1))].shape[0]
-                N += n
-                if len(self.FFP_Climatology.items()) >1:
-                    self.fclim_2d = self.fclim_2d/n
-                    self.contours_from_rio(i+1)
-                    raster_out.write(self.fclim_2d,i+1)
-            self.fclim_2d = self.fclim_2d_Full/N
-            raster_out.write(self.fclim_2d,i+2)
-            self.sub_name = 'Climatology'
-            self.contours_from_rio(i+2)
-            self.contour_levels = gpd.GeoDataFrame.from_features(self.FeatureCollection["features"],crs=self.EPSG)
-            # Dissolve to get small "corner cells" merged into main shape
-            self.contour_levels = self.contour_levels.dissolve(by=self.GDF_columns).reset_index()
+                if self.ini['Output']['smoothing_factor']!='':
+                    S_F = float(self.ini['Output']['smoothing_factor'])
+                    self.contour_levels.geometry = self.contour_levels.geometry.simplify(self.dx*S_F).buffer(self.dx*S_F, join_style=1).buffer(self.dx*S_F, join_style=1)
+                
+                self.contour_levels = self.contour_levels.dissolve(by=self.GDF_columns).reset_index()
 
-
-            if self.ini['Output']['smoothing_factor']!='':
-                S_F = float(self.ini['Output']['smoothing_factor'])
-                self.contour_levels.geometry = self.contour_levels.geometry.simplify(self.dx*S_F).buffer(self.dx*S_F, join_style=1).buffer(self.dx*S_F, join_style=1)
+                for i,row in self.contour_levels.iterrows():
+                    Dissolved = self.contour_levels.loc[((self.contour_levels['BandID'] == row['BandID'])&
+                                                    (self.contour_levels['r'] <= row['r']))].dissolve().geometry
+                    self.contour_levels.loc[self.contour_levels.index == i,'geometry'] = [Dissolved[0]]
             
-            self.contour_levels = self.contour_levels.dissolve(by=self.GDF_columns).reset_index()
-
-            for i,row in self.contour_levels.iterrows():
-                Dissolved = self.contour_levels.loc[((self.contour_levels['BandID'] == row['BandID'])&
-                                                (self.contour_levels['r'] <= row['r']))].dissolve().geometry
-                self.contour_levels.loc[self.contour_levels.index == i,'geometry'] = [Dissolved[0]]
-        
-            self.contour_levels['Area'] = self.contour_levels.area
-            self.contour_levels.to_file(f"{self.ini['Output']['dpath']}{self.Site_code}_FFP_{self.dx}m.shp")
+                self.contour_levels['Area'] = self.contour_levels.area
+                self.contour_levels['Site_Code']=sc
+                self.All_Contours = gpd.GeoDataFrame(pd.concat([self.All_Contours,self.contour_levels], ignore_index=True), crs=self.contour_levels.crs)
+            self.All_Contours.to_file(f"{self.ini['Output']['dpath']}{self.Site_code[0]}_FFP_{self.dx}m.shp")
 
             self.webMap()
 
@@ -356,12 +379,13 @@ class RunClimatology():
         for s in shapes:
             self.feature["properties"] = {'r':s[1],'Interval':int_name,'BandID':i,'n_Obs':n_Obs}
             self.feature["geometry"] = s[0]
+            # print(self.feature)
             self.FeatureCollection['features'].append(self.feature.copy())
         self.GDF_columns=list(self.feature["properties"].keys())
     
     def webMap(self):
-        self.WGS = self.contour_levels.to_crs('WGS1984')
-        self.WGS['info'] = '<h3>'+self.WGS['Interval'].astype(str)+'</h3><br>'+np.round(self.WGS['r']*100).astype(int).astype(str)+ ' % FFP Contour<br>'+ np.round(self.WGS['Area']*100).astype(int).astype(str)+' m<sup>2</sup>'     
+        self.WGS = self.All_Contours.to_crs('WGS1984')
+        self.WGS['info'] = '<h3>'+self.WGS['Interval'].astype(str)+'</h3><br>'+np.round(self.WGS['r']*100).astype(int).astype(str)+ ' % FFP Contour<br>'+ self.WGS['Area'].apply(lambda n: f'{n:.2e}')+' m<sup>2</sup>'     
         self.WGS = self.WGS.sort_values(by='r',ascending=False)
 
         MapTemplate = open('MapTemplate.html','r')
@@ -394,7 +418,7 @@ class RunClimatology():
         MapFmt = MapFmt.replace(rep_SourceList,SourceList)
         MapFmt = MapFmt.replace(rep_StyleList,StyleList)
         MapFmt = MapFmt.replace('SITE_json',self.Site_WGS.to_json())
-        with open(f"{self.ini['Output']['dpath']}{self.Site_code}_FFP_{self.dx}m.html",'w+') as out:
+        with open(f"{self.ini['Output']['dpath']}{self.Site_code[0]}_FFP_{self.dx}m.html",'w+') as out:
             out.write(MapFmt)
 
-        self.WGS.to_file(f"{self.ini['Output']['dpath']}{self.Site_code}_FFP_{self.dx}m.geojson",driver='GeoJSON')
+        self.WGS.to_file(f"{self.ini['Output']['dpath']}{self.Site_code[0]}_FFP_{self.dx}m.geojson",driver='GeoJSON')
