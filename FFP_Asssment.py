@@ -23,27 +23,31 @@ import matplotlib.pyplot as plt
 
 class RunClimatology():
 
-    def __init__(self,Site_code,Site_Config,Subsets=None,Basemap=None,Basemap_Class=None):
+    def __init__(self,input_data,Site_Config,Subsets=None,Basemap=None,Basemap_Class=None):
         self.Subsets = Subsets
-            
-        if isinstance(Site_code, str):
-            Site_code=[Site_code]
-        self.Site_code = Site_code
+        self.input_data=input_data
+        self.Site_code = []
         self.ini = configparser.ConfigParser()
-        self.ini.read('../MicrometPy.ini')
-        self.ini.read('configuration.ini')
         self.ini.read(Site_Config)
-        for sc in self.Site_code:
-            if Basemap is not None and Basemap_Class is not None:
-                self.ini[sc]['basemap'] = Basemap
-                self.ini[sc]['basemap_class'] = Basemap_Class
-            else:
-                self.ini[sc]['basemap'] = 'N/A'
-                self.ini[sc]['basemap_class'] = 'N/A'
+        for site,section in self.ini.items():
+            if len(section.keys())>0:
+                self.Site_code.append(site)
+                if Basemap is not None and Basemap_Class is not None:
+                    if isinstance(Basemap,dict):
+                        self.ini[site]['basemap'] = Basemap[site]
+                        self.ini[site]['basemap_class'] = Basemap_Class[site]
+                    else:
+                        self.ini[site]['basemap'] = Basemap
+                        self.ini[site]['basemap_class'] = Basemap_Class
+                
+                else:
+                    self.ini[sc]['basemap'] = 'N/A'
+                    self.ini[sc]['basemap_class'] = 'N/A'
+                    
+        self.ini.read('configuration.ini')
         
-        # Dump Site to a Dataframe
-        # Site = pd.DataFrame(data=dict(self.ini[self.Site_code]),index=[0])
-        Site={sc:dict(self.ini[sc]) for i,sc in enumerate(self.Site_code)}
+        # Dump Site(s) to a Dataframe
+        Site={sc:dict(self.ini[sc]) for sc in self.Site_code}
         Site = pd.DataFrame(Site).T
         Site.index=[sc for sc in self.Site_code]
 
@@ -52,16 +56,13 @@ class RunClimatology():
                 Site[c]=Site[c].astype('float64')
             except:
                 pass
-        # print
+            
         # Default centerpoint to first site provided
         self.lon_lat = list(Site[['longitude','latitude']].values[0])
         self.EPSG = utm_zone.epsg(self.lon_lat)
         
         self.Site_WGS = gpd.GeoDataFrame(Site, geometry=gpd.points_from_xy(Site.longitude, Site.latitude), crs="EPSG:4326")
         self.Site_UTM = self.Site_WGS.to_crs(self.EPSG)
-        # self.Site_UTM = self.Site_UTM.reset_index(drop=True)
-
-        # self.z = float(self.ini[self.Site_code]['zm'])
 
         # =====================================================================================
         # Define grid parameters for model
@@ -91,110 +92,117 @@ class RunClimatology():
         # initialize rasters for footprint climatology
         self.fclim_2d_empty = np.zeros(self.x_2d.shape,dtype=np.float32)
 
-        # basemap is an optional input, requires a 'path to vector layer' pluss a 'classification' key
+        # basemap is an optional input, requires a 'path to vector layer' plus a 'classification' key
         # update in future to allow for multiple basemaps
-        self.rasterizeBasemap(self.ini[self.Site_code[0]]['basemap'],self.ini[self.Site_code[0]]['basemap_class'])
+
+        self.rasterizeBasemap()
 
         self.FFP_Climatology = {}
         self.read_Met()
         if self.FFP_Climatology != {}:
             self.summarizeClimatology()
-        self.Data.to_csv(f"{self.ini['Output']['dpath']}/FFP_Source_Area_{self.dx}m.csv")
 
-    def rasterizeBasemap(self,basemap,basemap_class):
-        x,y = self.Site_UTM.geometry.x.iloc[0],self.Site_UTM.geometry.y.iloc[0]
-        west = x-(self.nx*self.dx)/2
-        north = y+(self.nx*self.dx)/2
-        self.Transform = from_origin(west,north,self.dx,self.dx)
-        
-        if os.path.isfile(basemap):
-            print('Rasterizing bassemap')
-            # Read basemap layer and reproject if not already in the proper WGS 1984 Zone
-            self.baseVector = gpd.read_file(basemap).to_crs(self.EPSG)
-            self.baseVector = gpd.clip(self.baseVector,self.Site_UTM.buffer(self.domain))
-            if basemap_class != 'None' and basemap_class != '':
-                self.baseVector = self.baseVector.dissolve(by=basemap_class).reset_index()
-            else:
-                basemap_class = 'Unit'
-                self.baseVector[basemap_class]=self.baseVector.index
-                self.baseVector = self.baseVector.dissolve().reset_index(drop=True)
-            self.baseVector.index+=1
-            self.baseRasterKey = self.baseVector[basemap_class].to_dict()
-            self.Fc_Names = [self.baseRasterKey[i]+'_Fc' for i in self.baseVector.index.values]
+    def rasterizeBasemap(self):
+        print('Rasterizing bassemap')
+        self.Transform = {}
+        self.baseVector = {}
+        self.baseRaster = {}
+        self.baseRasterKey = {}
+        self.Fc_Names = {}
+        for self.sc in self.Site_code:
+            basemap=self.ini[self.sc]['basemap']
+            basemap_class=self.ini[self.sc]['basemap_class']
+            x,y = self.Site_UTM.loc[self.Site_UTM.index==self.sc].geometry.x.values[0],self.Site_UTM.loc[self.Site_UTM.index==self.sc].geometry.y.values[0]
+            west = x-(self.nx*self.dx)/2
+            north = y+(self.nx*self.dx)/2
+            self.Transform[self.sc] = from_origin(west,north,self.dx,self.dx)
+            
+            if os.path.isfile(basemap):
+                # Read basemap layer and reproject if not already in the proper WGS 1984 Zone
+                self.baseVector[self.sc] = gpd.read_file(basemap).to_crs(self.EPSG)
+                self.baseVector[self.sc] = gpd.clip(self.baseVector[self.sc],self.Site_UTM.buffer(self.domain))
+                if basemap_class != 'None' and basemap_class != '':
+                    self.baseVector[self.sc] = self.baseVector[self.sc].dissolve(by=basemap_class).reset_index()
+                else:
+                    basemap_class = 'Unit'
+                    self.baseVector[self.sc][basemap_class]=self.baseVector[self.sc].index
+                    self.baseVector[self.sc] = self.baseVector[self.sc].dissolve().reset_index(drop=True)
+                self.baseVector[self.sc].index+=1
+                self.baseRasterKey[self.sc] = self.baseVector[self.sc][basemap_class].to_dict()
+                self.Fc_Names[self.sc] = [self.baseRasterKey[self.sc][i]+'_Fc' for i in self.baseVector[self.sc].index.values]
 
-            shapes = ((geom,value) for geom,value in zip(self.baseVector['geometry'],self.baseVector.index))
+                shapes = ((geom,value) for geom,value in zip(self.baseVector[self.sc]['geometry'],self.baseVector[self.sc].index))
 
-            with rasterio.open(f"{self.ini['Output']['dpath']}/Footprint_Basemap_{self.dx}m.tif",'w+',driver='GTiff',width = self.nx, height = self.nx,#+1,
-                            count = 1,dtype=np.float32,transform = self.Transform,crs = ({'init': f'EPSG:{self.EPSG}'})) as out:
-                out_arr = out.read(1)
-                self.baseRaster = features.rasterize(shapes=shapes,fill = 100,out = out_arr,transform = self.Transform,default_value=-1)
-                self.baseRaster = self.baseRaster * self.symetric_Mask
-                out.write(self.baseRaster,1)
-        else: 
-            print('Basemap not provided, creating default')
-            self.baseRaster = self.symetric_Mask
-            self.Fc_Names = []
-            self.baseRasterKey = {f'Contribution within {self.domain} m':''}
+                with rasterio.open(f"{self.ini['Output']['dpath']}/Footprint_Basemap_{self.sc}_{self.dx}m.tif",'w+',driver='GTiff',width = self.nx, height = self.nx,#+1,
+                                count = 1,dtype=np.float32,transform = self.Transform[self.sc],crs = ({'init': f'EPSG:{self.EPSG}'})) as out:
+                    out_arr = out.read(1)
+                    self.baseRaster[self.sc] = features.rasterize(shapes=shapes,fill = 100,out = out_arr,transform = self.Transform[self.sc],default_value=-1)
+                    self.baseRaster[self.sc] = self.baseRaster[self.sc] * self.symetric_Mask
+                    out.write(self.baseRaster[self.sc],1)
+            else: 
+                print('Basemap not provided, creating default')
+                self.baseRaster[self.sc] = self.symetric_Mask
+                self.Fc_Names[self.sc] = []
+                self.baseRasterKey[self.sc] = {f'Contribution within {self.domain} m':''}
         
         
     def read_Met(self):
 
         self.vars = self.ini['Input_Variable_Names']
 
-        self.Data = pd.read_csv(self.ini['Input_Data']['dpath'],dtype=np.object_)
+        self.AllData = pd.read_csv(self.input_data,dtype=np.object_)
 
         if self.Subsets is not None:
-            self.Data['Subset']=self.Data[self.Subsets]
-            self.Data['Subset'] = self.Data['Subset'].fillna('N/A')
+            self.AllData['Subset']=self.AllData[self.Subsets]
+            self.AllData['Subset'] = self.AllData['Subset'].fillna('N/A')
         else:
-           self.Data['Subset'] = 'Climatology'
+           self.AllData['Subset'] = ''
 
-        self.Data = self.Data.merge(pd.Series(self.Site_code,name='Site_Code'),how='cross')
-        self.Data.loc[self.Data['Subset']!='N/A','Subset']+=' '+self.Data.loc[self.Data['Subset']!='N/A','Site_Code']
+        if 'Site_Code' not in self.AllData.columns:
+            self.AllData = self.AllData.merge(pd.Series(self.Site_code,name='Site_Code'),how='cross')
+            self.AllData.loc[self.AllData['Subset']!='N/A','Subset']+=' '+self.AllData.loc[self.AllData['Subset']!='N/A','Site_Code']
         
         # Set FFP inputs to floats
         for key,val in self.vars.items():
-            if val in self.Data.columns:
-                self.Data[val]=self.Data[val].astype(np.float_)
-
-        for static_variables in ['canopy_height','zm','bearing']:
-            if self.vars[static_variables] not in self.Data:
-                for sc in self.Site_code:
-                    self.Data.loc[self.Data['Site_Code']==sc,self.vars[static_variables]]=self.Site_UTM.loc[sc,self.vars[static_variables]]
-            else:
-                for sc in self.Site_code:
-                    self.Data.loc[self.Data['Site_Code']==sc,self.vars[static_variables]] = self.Data.loc[self.Data['Site_Code']==sc,self.vars[static_variables]].fillna(self.Site_UTM.loc[sc,static_variables])
-
-        if self.vars['z0'] != '':
-            self.Data['z0'] = self.Data[self.vars['z0']].copy()
-        if self.ini['Assumptions']['roughness_length'] != 'None':
-            self.Data['z0'] = self.Data[self.vars['canopy_height']]*float(self.ini['Assumptions']['roughness_length'])
-        elif self.ini['Assumptions']['roughness_length'] == 'None':
-            self.Data['z0'] = None
-        self.Data['zm-d'] = self.Data['zm']-(self.Data[self.vars['canopy_height']]*float(self.ini['Assumptions']['displacement_height']))
-        self.Data['zm/ol'] = self.Data['zm-d']/self.Data[self.vars['ol']]
-
-            
-        self.Data[self.Fc_Names] = np.nan
-        for self.n_sub,self.sub_name in enumerate(self.Data['Subset'].unique()):
-            if self.sub_name != 'N/A':
-                print('\nProcessing: ',self.sub_name)
-                self.sub_data = self.Data.loc[self.Data['Subset']==self.sub_name].copy()
-                C = self.Filter()
-                if C == True:
-                    self.run()
-                    for c in self.Fc_Names:
-                        self.Data[c] = self.Data[c].fillna(self.sub_data[c])
-                    sc = self.sub_data['Site_Code'].values[0]
-                    self.FFP_Climatology[sc]={}
-                    # Reverse the ordering of the array so that north is up
-                    self.FFP_Climatology[sc][self.sub_name] = self.fclim_2d[::-1]
+            if val in self.AllData.columns:
+                self.AllData[val]=self.AllData[val].astype(np.float_)
+        self.Data = {}
+        for self.sc in self.Site_code:
+            self.Data[self.sc] = self.AllData.loc[self.AllData['Site_Code']==self.sc].copy()
+            for static_variables in ['canopy_height','zm','bearing']:
+                if self.vars[static_variables] not in self.Data[self.sc]:
+                    self.Data[self.sc].loc[self.Data[self.sc]['Site_Code']==self.sc,self.vars[static_variables]]=self.Site_UTM.loc[self.sc,self.vars[static_variables]]
                 else:
-                    print(f'No valid input records for {self.sub_name}')
+                    self.Data[self.sc].loc[self.Data[self.sc]['Site_Code']==self.sc,self.vars[static_variables]] = self.Data[self.sc].loc[self.Data[self.sc]['Site_Code']==self.sc,self.vars[static_variables]].fillna(self.Site_UTM.loc[self.sc,static_variables])
+
+            if self.vars['z0'] != '':
+                self.Data[self.sc]['z0'] = self.Data[self.sc][self.vars['z0']].copy()
+            if self.ini['Assumptions']['roughness_length'] != 'None':
+                self.Data[self.sc]['z0'] = self.Data[self.sc][self.vars['canopy_height']]*float(self.ini['Assumptions']['roughness_length'])
+            elif self.ini['Assumptions']['roughness_length'] == 'None':
+                self.Data[self.sc]['z0'] = None
+            self.Data[self.sc]['zm-d'] = self.Data[self.sc]['zm']-(self.Data[self.sc][self.vars['canopy_height']]*float(self.ini['Assumptions']['displacement_height']))
+            self.Data[self.sc]['zm/ol'] = self.Data[self.sc]['zm-d']/self.Data[self.sc][self.vars['ol']]
+
+            self.Data[self.sc][self.Fc_Names[self.sc]] = np.nan
+            for self.n_sub,self.sub_name in enumerate(self.Data[self.sc]['Subset'].unique()):
+                if self.sub_name != 'N/A':
+                    print('\nProcessing: ',self.sub_name)
+                    self.sub_data = self.Data[self.sc].loc[self.Data[self.sc]['Subset']==self.sub_name].copy()
+                    C = self.Filter()
+                    if C == True:
+                        self.run()
+                        for c in self.Fc_Names[self.sc]:
+                            self.Data[self.sc][c] = self.Data[self.sc][c].fillna(self.sub_data[c])
+                        self.FFP_Climatology[self.sc]={}
+                        # Reverse the ordering of the array so that north is up
+                        self.FFP_Climatology[self.sc][self.sub_name] = self.fclim_2d[::-1]
+                    else:
+                        print(f'No valid input records for {self.sub_name}')
+            self.Data[self.sc].to_csv(f"{self.ini['Output']['dpath']}/{self.sc}_FFP_Source_Area_{self.dx}m.csv")
 
     def Filter(self):
         d = int(self.ini['FFP_Parameters']['exclude_wake'])
-        # b = float(self.ini[self.Site_code]['bearing'])
         Exclude = {
             'under':{
                 'zm/ol':-15.5,
@@ -202,17 +210,14 @@ class RunClimatology():
                 self.vars['ustar']:.1,
                 self.vars['sigmav']:0,
                 self.vars['h']:10,
-                # self.vars['h']:self.sub_data['zm-d'],
                 self.vars['wind_dir']:0,
             },
             'over':{
                 'zm-d':self.sub_data[self.vars['h']],
                 self.vars['wind_dir']:360
             },
-            # 'between':{
-            #     self.vars['wind_dir']:[b-180-d,b-180+d,b+180-d,b+180+d]
-            # }
         }
+
         self.sub_data['process'] = 1
 
         for key,val in self.vars.items():
@@ -236,20 +241,15 @@ class RunClimatology():
                     print(f'{flagged} records skipped: high {key}')
                 self.sub_data.loc[self.sub_data[key]>value,'process']=0
 
-            # for key,value in Exclude['between'].items():
-            
-                
-                # self.vars['wind_dir']:[b-180-d,b-180+d,b+180-d,b+180+d]
             flagged = self.sub_data.loc[(((self.sub_data['wind_dir']>self.sub_data['bearing']-180-d) & (self.sub_data['wind_dir']<self.sub_data['bearing']-180+d))|
                                         ((self.sub_data['wind_dir']>self.sub_data['bearing']+180-d) & (self.sub_data['wind_dir']<self.sub_data['bearing']+180+d))),'process'].shape[0]
             if flagged > 0:
                 print(f'{flagged} records skipped: unacceptable {key}')
             self.sub_data.loc[(((self.sub_data['wind_dir']>self.sub_data['bearing']-180-d) & (self.sub_data['wind_dir']<self.sub_data['bearing']-180+d))|
                                             ((self.sub_data['wind_dir']>self.sub_data['bearing']+180-d) & (self.sub_data['wind_dir']<self.sub_data['bearing']+180+d))),'process']=0
+            
         return(self.sub_data.loc[self.sub_data['process']==1].shape[0]>0)
-        # else:
-        #     return(False)
-                
+    
     def run(self):         
         print(f"Processing: {self.sub_data.loc[self.sub_data['process']==1].shape[0]} out of {self.sub_data.shape[0]} input records for {self.sub_name}")
         self.fclim_2d = self.fclim_2d_empty.copy()
@@ -279,7 +279,7 @@ class RunClimatology():
                 ix += batchsize
                 
                 with Pool(processes=int(n_processes)) as pool:
-                    for out in pool.starmap(partial(FFP,theta=self.theta,rho=self.rho,x_2d=self.x_2d,basemap=self.baseRaster),
+                    for out in pool.starmap(partial(FFP,theta=self.theta,rho=self.rho,x_2d=self.x_2d,basemap=self.baseRaster[self.sc]),
                                         zip(index,umean,ustar,sigmav,h,ol,wind_dir,z0,zm)):
                         self.processOutputs(out)
                     pool.close()
@@ -290,39 +290,39 @@ class RunClimatology():
             for i,row in self.sub_data.iterrows():
                 out = FFP(i,row[self.vars['umean']],row[self.vars['ustar']],row[self.vars['sigmav']],row[self.vars['h']],
                     row[self.vars['ol']],row[self.vars['wind_dir']],row['z0'],row['zm-d'],
-                    self.theta,self.rho,self.x_2d,basemap=self.baseRaster)
+                    self.theta,self.rho,self.x_2d,basemap=self.baseRaster[self.sc])
                 self.processOutputs(out)
 
     def processOutputs(self,out):
         self.fclim_2d = self.fclim_2d + out[1] * self.symetric_Mask
-        if len(out) >2 and len(self.Fc_Names) > 0:
-            self.Data.loc[self.Data.index==out[0],self.Fc_Names]=out[2]
-            self.Data.loc[self.Data.index==out[0],f'Contribution within {self.domain} m']=out[1].sum()
-            self.Data.loc[self.Data.index==out[0],'process']=1
+        if len(out) >2 and len(self.Fc_Names[self.sc]) > 0:
+            self.Data[self.sc].loc[self.Data[self.sc].index==out[0],self.Fc_Names[self.sc]]=out[2]
+            self.Data[self.sc].loc[self.Data[self.sc].index==out[0],f'Contribution within {self.domain} m']=out[1].sum()
+            self.Data[self.sc].loc[self.Data[self.sc].index==out[0],'process']=1
             
         else:
-            self.Data.loc[self.Data.index==out[0],f'Contribution within {self.domain} m']=out[1].sum()
-            self.Data.loc[self.Data.index==out[0],'process']=1
+            self.Data[self.sc].loc[self.Data[self.sc].index==out[0],f'Contribution within {self.domain} m']=out[1].sum()
+            self.Data[self.sc].loc[self.Data[self.sc].index==out[0],'process']=1
 
     def summarizeClimatology(self):
-        self.fclim_2d_Full = self.fclim_2d_empty.copy()
-        N = 0
 
-        self.feature = {"type": "Feature", "properties": {}, "geometry": {}}
         self.All_Contours = gpd.GeoDataFrame()
-        for sc in self.Site_code:
+        for self.sc in self.Site_code:
+            self.fclim_2d_Full = self.fclim_2d_empty.copy()
+            N = 0
+            self.feature = {"type": "Feature", "properties": {}, "geometry": {}}
             self.FeatureCollection = {
                 "type": "FeatureCollection",
                 "features": []
             }
-            with rasterio.open(f"{self.ini['Output']['dpath']}{sc}_FFP_{self.dx}m.tif",'w+',driver='GTiff',
+            with rasterio.open(f"{self.ini['Output']['dpath']}{self.sc}_FFP_{self.dx}m.tif",'w+',driver='GTiff',
                             width = self.nx, height = self.nx,count = self.n_sub+2,dtype=np.float32,
-                            transform = self.Transform,crs = ({'init': f'EPSG:{self.EPSG}'})) as raster_out:
-                for i,(self.sub_name,self.fclim_2d) in enumerate(self.FFP_Climatology[sc].items()):
+                            transform = self.Transform[self.sc],crs = ({'init': f'EPSG:{self.EPSG}'})) as raster_out:
+                for i,(self.sub_name,self.fclim_2d) in enumerate(self.FFP_Climatology[self.sc].items()):
                     self.fclim_2d_Full += self.fclim_2d.copy()
-                    n = self.Data.loc[((self.Data['Subset']==self.sub_name)&(self.Data['process']==1))].shape[0]
+                    n = self.Data[self.sc].loc[((self.Data[self.sc]['Subset']==self.sub_name)&(self.Data[self.sc]['process']==1))].shape[0]
                     N += n
-                    if len(self.FFP_Climatology[sc].items()) >0:
+                    if len(self.FFP_Climatology[self.sc].items()) >0:
                         self.fclim_2d = self.fclim_2d/n
                         self.contours_from_rio(i+1)
                         raster_out.write(self.fclim_2d,i+1)
@@ -330,7 +330,7 @@ class RunClimatology():
                     self.fclim_2d = self.fclim_2d_Full/N
                     self.contours_from_rio(i+2)
                     raster_out.write(self.fclim_2d,i+2)
-                    self.sub_name = 'Climatology '+sc
+                    self.sub_name = 'Climatology '+self.sc
                 self.contour_levels = gpd.GeoDataFrame.from_features(self.FeatureCollection["features"],crs=self.EPSG)
                 # Dissolve to get small "corner cells" merged into main shape
                 self.contour_levels = self.contour_levels.dissolve(by=self.GDF_columns).reset_index()
@@ -347,11 +347,11 @@ class RunClimatology():
                     self.contour_levels.loc[self.contour_levels.index == i,'geometry'] = [Dissolved[0]]
             
                 self.contour_levels['Area'] = self.contour_levels.area
-                self.contour_levels['Site_Code']=sc
-                self.All_Contours = gpd.GeoDataFrame(pd.concat([self.All_Contours,self.contour_levels], ignore_index=True), crs=self.contour_levels.crs)
-            self.All_Contours.to_file(f"{self.ini['Output']['dpath']}{self.Site_code[0]}_FFP_{self.dx}m.shp")
+            self.contour_levels['Site_Code']=self.sc
+            self.All_Contours = gpd.GeoDataFrame(pd.concat([self.All_Contours,self.contour_levels], ignore_index=True), crs=self.contour_levels.crs)
+        self.All_Contours.to_file(f"{self.ini['Output']['dpath']}All_FFP_Contours_{self.dx}m.shp")
 
-            self.webMap()
+        self.webMap()
 
     def contours_from_rio(self,i):
         fclim_2d_r = self.fclim_2d*0
@@ -368,12 +368,12 @@ class RunClimatology():
         Mask = np.array(fclim_2d_r,dtype=bool)
         fclim_2d_r = np.float32(fclim_2d_r)
 
-        shapes = features.shapes(fclim_2d_r,mask=Mask,transform=self.Transform)
+        shapes = features.shapes(fclim_2d_r,mask=Mask,transform=self.Transform[self.sc])
         int_name = self.sub_name.replace(':','').replace('-','')
-        n_Obs = self.Data.loc[self.Data['Subset']==self.sub_name].shape[0]
-        int_name = re.sub('[^0-9a-zA-Z]+', '_', int_name)
+        n_Obs = self.Data[self.sc].loc[self.Data[self.sc]['Subset']==self.sub_name].shape[0]
+        int_name = re.sub('[^0-9a-zA-Z]+', '_', int_name.lstrip())
         if int_name == 'Climatology':
-            n_Obs = self.Data.loc[self.Data['Subset']!='N/A'].shape[0]
+            n_Obs = self.Data[self.sc].loc[self.Data[self.sc]['Subset']!='N/A'].shape[0]
         if int_name[0].isdigit():
             int_name = 'I'+int_name
         for s in shapes:
@@ -418,7 +418,7 @@ class RunClimatology():
         MapFmt = MapFmt.replace(rep_SourceList,SourceList)
         MapFmt = MapFmt.replace(rep_StyleList,StyleList)
         MapFmt = MapFmt.replace('SITE_json',self.Site_WGS.to_json())
-        with open(f"{self.ini['Output']['dpath']}{self.Site_code[0]}_FFP_{self.dx}m.html",'w+') as out:
+        with open(f"{self.ini['Output']['dpath']}All_FFP_Contours_{self.dx}m.shp_FFP_{self.dx}m.html",'w+') as out:
             out.write(MapFmt)
 
-        self.WGS.to_file(f"{self.ini['Output']['dpath']}{self.Site_code[0]}_FFP_{self.dx}m.geojson",driver='GeoJSON')
+        self.WGS.to_file(f"{self.ini['Output']['dpath']}All_FFP_Contours_{self.dx}m.shp_FFP_{self.dx}m.geojson",driver='GeoJSON')
